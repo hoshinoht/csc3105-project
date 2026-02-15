@@ -1,0 +1,11 @@
+.project
+.pydevproject
+*~
+*.pyc
+
+
+CLAUDE.md
+/.claude/*
+
+
+CSC3105_Mini_Project_2026.pdf
