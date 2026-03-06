@@ -10,6 +10,7 @@ from src.peak_detection import extract_two_paths
 from src.feature_engineering import build_features
 from src.classification import train_classifiers
 from src.regression import train_regressors
+from src.dl_training import train_dl_classifier
 from src import visualization as viz
 
 
@@ -60,6 +61,26 @@ def main():
     print("STEP 5: LOS/NLOS Classification")
     print("=" * 60)
     cls_results = train_classifiers(X_train_cls, y_train_cls, X_test_cls, y_test_cls)
+
+    # ── Step 5b: Deep Learning on Raw CIR ─────────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 5b: CNN+Transformer on Raw CIR")
+    print("=" * 60)
+
+    # Prepare CIR and scalar tensors from original (non-expanded) data
+    cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
+    X_cir_train = df_scaled[cir_cols].values[train_idx]
+    X_cir_test = df_scaled[cir_cols].values[test_idx]
+    X_scalar_train = df_scaled[SCALAR_FEATURES].values[train_idx]
+    X_scalar_test = df_scaled[SCALAR_FEATURES].values[test_idx]
+    y_dl_train = df_scaled['NLOS'].values[train_idx]
+    y_dl_test = df_scaled['NLOS'].values[test_idx]
+
+    dl_result = train_dl_classifier(
+        X_cir_train, X_scalar_train, y_dl_train,
+        X_cir_test, X_scalar_test, y_dl_test,
+    )
+    cls_results['CNN+Transformer'] = dl_result
 
     # ── Step 6: Distance Estimation ──────────────────────────────────
     print("\n" + "=" * 60)
@@ -125,6 +146,12 @@ def main():
     viz.plot_confusion_matrices(cls_results, y_test_cls)
     viz.plot_roc_curves(cls_results)
     viz.plot_model_comparison(cls_results)
+
+    if 'CNN+Transformer' in cls_results:
+        viz.plot_attention_map(
+            cls_results['CNN+Transformer']['model'],
+            df_scaled, train_idx, test_idx,
+        )
 
     # Results plots
     print("\n[Results]")

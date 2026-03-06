@@ -138,8 +138,9 @@ def plot_confusion_matrices(cls_results, y_test):
     if n_models == 1:
         axes = [axes]
     for ax, (name, res) in zip(axes, cls_results.items()):
-        ConfusionMatrixDisplay.from_predictions(
-            y_test, res['y_pred'], display_labels=['LOS', 'NLOS'],
+        # Use stored confusion matrix (supports models with different test sets)
+        cm = res['confusion_matrix']
+        ConfusionMatrixDisplay(cm, display_labels=['LOS', 'NLOS']).plot(
             cmap='Blues', ax=ax,
         )
         ax.set_title(name)
@@ -221,6 +222,83 @@ def plot_residuals(reg_results_p1, y_test_p1, reg_results_p2, y_test_p2):
         ax.set_title(f'{title} Residuals — {best_name}')
     fig.suptitle('Residual Distributions')
     _savefig('11_residuals.png')
+
+
+def plot_attention_map(dl_model, df, train_idx, test_idx, n=4):
+    """Visualize transformer attention weights on sample CIR waveforms."""
+    import torch
+    from src.preprocessing import SCALAR_FEATURES
+
+    cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
+    device = next(dl_model.parameters()).device
+    dl_model.eval()
+
+    # Pick sample LOS and NLOS from test set
+    test_labels = df['NLOS'].values[test_idx]
+    los_idxs = test_idx[test_labels == 0][:n // 2]
+    nlos_idxs = test_idx[test_labels == 1][:n // 2]
+    sample_idxs = np.concatenate([los_idxs, nlos_idxs])
+
+    fig, axes = plt.subplots(2, len(sample_idxs), figsize=(5 * len(sample_idxs), 8))
+
+    for col, idx in enumerate(sample_idxs):
+        cir_raw = df.iloc[idx][cir_cols].values.astype(float)
+        cir_tensor = torch.tensor(cir_raw, dtype=torch.float32).unsqueeze(0).to(device)
+        scalar_tensor = torch.tensor(
+            df.iloc[idx][SCALAR_FEATURES].values.astype(float),
+            dtype=torch.float32,
+        ).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            logit = dl_model(cir_tensor, scalar_tensor)
+            pred = 'NLOS' if logit.item() > 0 else 'LOS'
+
+        true_label = 'NLOS' if df.iloc[idx]['NLOS'] == 1 else 'LOS'
+
+        # Get attention weights: [1, seq_len, seq_len] -> average over queries
+        attn = dl_model.last_attention_weights
+        if attn is not None:
+            attn_avg = attn[0].mean(dim=0).cpu().numpy()  # [seq_len]
+            # Upsample attention to CIR length
+            attn_upsampled = np.interp(
+                np.linspace(0, 1, len(cir_raw)),
+                np.linspace(0, 1, len(attn_avg)),
+                attn_avg,
+            )
+        else:
+            attn_upsampled = np.zeros(len(cir_raw))
+
+        # Top: CIR waveform with attention overlay
+        ax_top = axes[0, col]
+        ax_top.plot(cir_raw, color='gray', linewidth=0.5)
+        ax_top.fill_between(
+            range(len(cir_raw)),
+            0, cir_raw,
+            alpha=0.3,
+            color='red' if true_label == 'NLOS' else 'blue',
+        )
+        ax_top.set_title(f'True: {true_label}, Pred: {pred}')
+        if col == 0:
+            ax_top.set_ylabel('CIR Amplitude')
+
+        # Bottom: attention heatmap
+        ax_bot = axes[1, col]
+        ax_bot.plot(cir_raw, color='gray', linewidth=0.5, alpha=0.5)
+        ax_bot.fill_between(
+            range(len(cir_raw)),
+            0,
+            attn_upsampled * cir_raw.max(),
+            alpha=0.6,
+            color='orange',
+            label='Attention',
+        )
+        ax_bot.set_xlabel('CIR Sample Index')
+        if col == 0:
+            ax_bot.set_ylabel('Attention Weight')
+            ax_bot.legend(fontsize=7)
+
+    fig.suptitle('Transformer Attention on CIR Waveforms')
+    _savefig('13_attention_map.png')
 
 
 def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
