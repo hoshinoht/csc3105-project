@@ -1,9 +1,28 @@
-"""Main pipeline: UWB LOS/NLOS Classification & Distance Estimation."""
+"""
+main.py — Main pipeline: UWB LOS/NLOS Classification & Distance Estimation.
+
+This script orchestrates the complete 3D Data Analytics pipeline:
+  Step 1: Data Loading — Load 42,000 UWB CIR measurements from 7 indoor environments.
+  Step 2: Data Preparation — Clean, normalize CIR, scale features, split 80/20.
+  Step 3: Peak Detection — Extract two dominant propagation paths from each CIR.
+  Step 4: Feature Engineering — Build 18-feature vectors for each path (84K rows).
+  Step 5: Classification — Train LR, RF, GBT classifiers on hand-crafted features.
+  Step 5b: Deep Learning — Train CNN+Transformer on raw 1016-sample CIR waveforms.
+  Step 5c: Synthetic Data — SMOTE augmentation for ML + CIR augmentation for DL,
+           with comparison against the original (non-augmented) results.
+  Step 6: Distance Estimation — Train Ridge, RF, GBT regressors for range prediction.
+  Step 7: Visualization — Generate 13+ plots covering all 3D analytics stages.
+
+Usage: python main.py
+
+Libraries: numpy, and all project modules under src/
+"""
 
 import numpy as np
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore')  # Suppress sklearn convergence warnings
 
+# Import project modules for each pipeline stage
 from src.data_loader import load_dataset
 from src.preprocessing import preprocess, scale_and_split, SCALAR_FEATURES
 from src.peak_detection import extract_two_paths
@@ -11,17 +30,21 @@ from src.feature_engineering import build_features
 from src.classification import train_classifiers
 from src.regression import train_regressors
 from src.dl_training import train_dl_classifier
+from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
 from src import visualization as viz
 
 
 def main():
     # ── Step 1: Load Data ────────────────────────────────────────────
+    # Load all 7 environment CSVs into a single DataFrame (42K x 1031)
     print("=" * 60)
     print("STEP 1: Loading Dataset")
     print("=" * 60)
     df_raw = load_dataset()
 
     # ── Step 2: Preprocessing ────────────────────────────────────────
+    # Drop constant columns, normalize CIR by RXPACC, StandardScale
+    # scalar features, stratified 80/20 train/test split
     print("\n" + "=" * 60)
     print("STEP 2: Preprocessing")
     print("=" * 60)
@@ -29,6 +52,8 @@ def main():
     df_scaled, train_idx, test_idx, scaler = scale_and_split(df)
 
     # ── Step 3: Peak Detection ───────────────────────────────────────
+    # For each CIR sample, find the two dominant propagation paths:
+    # Path 1 near FP_IDX, Path 2 as the next strongest peak
     print("\n" + "=" * 60)
     print("STEP 3: Two Dominant Path Extraction")
     print("=" * 60)
@@ -36,6 +61,8 @@ def main():
     path1_idx, path1_amp, path2_idx, path2_amp = extract_two_paths(df)
 
     # ── Step 4: Feature Engineering ──────────────────────────────────
+    # Extract 18 features per path and expand to 84K two-path dataset
+    # with appropriate NLOS labels and distance labels
     print("\n" + "=" * 60)
     print("STEP 4: Feature Engineering")
     print("=" * 60)
@@ -43,12 +70,13 @@ def main():
         df, path1_idx, path1_amp, path2_idx, path2_amp,
     )
 
-    # Map original train/test indices to expanded indices
+    # Map original train/test indices to expanded (two-path) indices.
+    # Path 1 rows are at positions 0..N-1, Path 2 rows are at N..2N-1
     n_orig = len(df)
-    # path1 rows are 0..n_orig-1, path2 rows are n_orig..2*n_orig-1
     exp_train_idx = np.concatenate([train_idx, train_idx + n_orig])
     exp_test_idx = np.concatenate([test_idx, test_idx + n_orig])
 
+    # Prepare ML classification data (expanded 84K dataset)
     X_train_cls = features_df.iloc[exp_train_idx].values
     y_train_cls = labels_cls[exp_train_idx]
     X_test_cls = features_df.iloc[exp_test_idx].values
@@ -57,17 +85,21 @@ def main():
     feature_names = list(features_df.columns)
 
     # ── Step 5: Classification ───────────────────────────────────────
+    # Train Logistic Regression, Random Forest (GridSearchCV),
+    # and Gradient Boosted Trees (GridSearchCV) on 18 hand-crafted features
     print("\n" + "=" * 60)
     print("STEP 5: LOS/NLOS Classification")
     print("=" * 60)
     cls_results = train_classifiers(X_train_cls, y_train_cls, X_test_cls, y_test_cls)
 
-    # ── Step 5b: Deep Learning on Raw CIR ─────────────────────────────
+    # ── Step 5b: Deep Learning on Raw CIR ────────────────────────────
+    # Train CNN+Transformer directly on the raw 1016-sample CIR waveforms
+    # (original 42K balanced dataset, no two-path expansion needed)
     print("\n" + "=" * 60)
     print("STEP 5b: CNN+Transformer on Raw CIR")
     print("=" * 60)
 
-    # Prepare CIR and scalar tensors from original (non-expanded) data
+    # Prepare DL input: raw CIR waveforms + scaled scalar features
     cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
     X_cir_train = df_scaled[cir_cols].values[train_idx]
     X_cir_test = df_scaled[cir_cols].values[test_idx]
@@ -80,14 +112,67 @@ def main():
         X_cir_train, X_scalar_train, y_dl_train,
         X_cir_test, X_scalar_test, y_dl_test,
     )
+    # Add DL results to classification results dict for unified visualization
     cls_results['CNN+Transformer'] = dl_result
 
+    # ── Step 5c: Synthetic Data Augmentation ────────────────────────
+    # Test whether synthetic data improves classification robustness.
+    # This addresses Data Preparation requirement VI.
+    print("\n" + "=" * 60)
+    print("STEP 5c: Synthetic Data Augmentation Experiment")
+    print("=" * 60)
+
+    # --- SMOTE on ML feature vectors ---
+    print("\n>> SMOTE augmentation for ML classifiers")
+    X_smote, y_smote, n_smote = apply_smote(X_train_cls, y_train_cls, target_ratio=0.5)
+
+    # Re-train the best ML model (Random Forest) with SMOTE-augmented data
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import accuracy_score, roc_curve, auc as sk_auc, confusion_matrix
+    rf_smote = RandomForestClassifier(
+        n_estimators=300, max_depth=None, class_weight='balanced',
+        random_state=42, n_jobs=-1,
+    )
+    rf_smote.fit(X_smote, y_smote)
+    y_pred_smote = rf_smote.predict(X_test_cls)
+    y_prob_smote = rf_smote.predict_proba(X_test_cls)[:, 1]
+    acc_smote = accuracy_score(y_test_cls, y_pred_smote)
+    fpr_s, tpr_s, _ = roc_curve(y_test_cls, y_prob_smote)
+    auc_smote = sk_auc(fpr_s, tpr_s)
+    print(f"  RF + SMOTE: Accuracy={acc_smote:.4f}, AUC={auc_smote:.4f}")
+    print(f"  RF original: Accuracy={cls_results['Random Forest']['accuracy']:.4f}, "
+          f"AUC={cls_results['Random Forest']['auc']:.4f}")
+    delta_acc = acc_smote - cls_results['Random Forest']['accuracy']
+    delta_auc = auc_smote - cls_results['Random Forest']['auc']
+    print(f"  Delta: Accuracy={delta_acc:+.4f}, AUC={delta_auc:+.4f}")
+
+    # --- CIR augmentation for DL model ---
+    print("\n>> CIR waveform augmentation for CNN+Transformer")
+    cir_aug, scalar_aug, label_aug, n_cir_synth = generate_augmented_cir(
+        X_cir_train, X_scalar_train, y_dl_train,
+        augmentation_factor=1, noise_level=0.05, max_shift=2,
+        scale_range=(0.85, 1.15), random_state=42,
+    )
+
+    dl_result_aug = train_dl_classifier(
+        cir_aug, scalar_aug, label_aug,
+        X_cir_test, X_scalar_test, y_dl_test,
+    )
+    print(f"\n  CNN+Transformer + Augmentation: "
+          f"Accuracy={dl_result_aug['accuracy']:.4f}, AUC={dl_result_aug['auc']:.4f}")
+    print(f"  CNN+Transformer original: "
+          f"Accuracy={dl_result['accuracy']:.4f}, AUC={dl_result['auc']:.4f}")
+    delta_acc_dl = dl_result_aug['accuracy'] - dl_result['accuracy']
+    delta_auc_dl = dl_result_aug['auc'] - dl_result['auc']
+    print(f"  Delta: Accuracy={delta_acc_dl:+.4f}, AUC={delta_auc_dl:+.4f}")
+
     # ── Step 6: Distance Estimation ──────────────────────────────────
+    # Train regressors separately for Path 1 and Path 2 range prediction
     print("\n" + "=" * 60)
     print("STEP 6: Distance Estimation")
     print("=" * 60)
 
-    # Path 1 regression
+    # Path 1 regression: use Path 1 features from the expanded dataset
     p1_mask_train = exp_train_idx[exp_train_idx < n_orig]
     p1_mask_test = exp_test_idx[exp_test_idx < n_orig]
     X_train_p1 = features_df.iloc[p1_mask_train].values
@@ -98,11 +183,12 @@ def main():
     print("\n>> Path 1 Distance Estimation")
     reg_results_p1 = train_regressors(X_train_p1, y_train_p1, X_test_p1, y_test_p1, "Path 1")
 
-    # Path 2 regression (include RANGE as additional feature)
+    # Path 2 regression: use Path 2 features + original RANGE as extra feature
+    # (Hint from spec: use FP_IDX and measured range to correlate to second path)
     p2_mask_train = exp_train_idx[exp_train_idx >= n_orig] - n_orig
     p2_mask_test = exp_test_idx[exp_test_idx >= n_orig] - n_orig
 
-    # Add original RANGE as feature for path 2
+    # Add original RANGE as an additional feature for Path 2 estimation
     X_train_p2_base = features_df.iloc[p2_mask_train + n_orig].values
     X_test_p2_base = features_df.iloc[p2_mask_test + n_orig].values
     range_train = df['RANGE'].values[p2_mask_train].reshape(-1, 1)
@@ -112,7 +198,8 @@ def main():
     y_train_p2 = labels_range[p2_mask_train + n_orig]
     y_test_p2 = labels_range[p2_mask_test + n_orig]
 
-    # Filter out samples where path2 was not found (range would be unreliable)
+    # Filter out samples where Path 2 was not detected (amplitude=0)
+    # since their range labels would be unreliable
     valid_train = path2_amp[p2_mask_train] > 0
     valid_test = path2_amp[p2_mask_test] > 0
     print(f"\n  Path 2 valid samples: train={valid_train.sum()}, test={valid_test.sum()}")
@@ -124,11 +211,12 @@ def main():
     )
 
     # ── Step 7: Visualization ────────────────────────────────────────
+    # Generate all plots organized by the 3D analytics stages
     print("\n" + "=" * 60)
     print("STEP 7: Generating Visualizations")
     print("=" * 60)
 
-    # Data Preparation plots
+    # --- Data Preparation plots ---
     print("\n[Data Preparation]")
     viz.plot_class_distribution(df_raw['NLOS'].values, labels_cls)
     viz.plot_feature_distributions(df_raw)
@@ -136,7 +224,7 @@ def main():
     viz.plot_cir_examples(df, path1_idx, path1_amp, path2_idx, path2_amp)
     viz.plot_fp_idx_distribution(df_raw)
 
-    # Data Mining plots
+    # --- Data Mining plots ---
     print("\n[Data Mining]")
     if 'feature_importances' in cls_results.get('Random Forest', {}):
         viz.plot_feature_importance(
@@ -147,13 +235,14 @@ def main():
     viz.plot_roc_curves(cls_results)
     viz.plot_model_comparison(cls_results)
 
+    # Plot transformer attention maps if DL model was trained
     if 'CNN+Transformer' in cls_results:
         viz.plot_attention_map(
             cls_results['CNN+Transformer']['model'],
             df_scaled, train_idx, test_idx,
         )
 
-    # Results plots
+    # --- Results / Analysis plots ---
     print("\n[Results]")
     viz.plot_predicted_vs_actual(reg_results_p1, y_test_p1,
                                  reg_results_p2, y_test_p2[valid_test])
@@ -172,11 +261,18 @@ def main():
 
     print("\nPath 1 Distance Estimation:")
     for name, res in reg_results_p1.items():
-        print(f"  {name}: RMSE={res['rmse']:.4f}m, R²={res['r2']:.4f}")
+        print(f"  {name}: RMSE={res['rmse']:.4f}m, R2={res['r2']:.4f}")
 
     print("\nPath 2 Distance Estimation:")
     for name, res in reg_results_p2.items():
-        print(f"  {name}: RMSE={res['rmse']:.4f}m, R²={res['r2']:.4f}")
+        print(f"  {name}: RMSE={res['rmse']:.4f}m, R2={res['r2']:.4f}")
+
+    print("\nSynthetic Data Augmentation Impact:")
+    print(f"  RF + SMOTE:                Acc={acc_smote:.4f} (delta={delta_acc:+.4f}), "
+          f"AUC={auc_smote:.4f} (delta={delta_auc:+.4f})")
+    print(f"  CNN+Transformer + CIR Aug: Acc={dl_result_aug['accuracy']:.4f} "
+          f"(delta={delta_acc_dl:+.4f}), AUC={dl_result_aug['auc']:.4f} "
+          f"(delta={delta_auc_dl:+.4f})")
 
     print(f"\nAll plots saved to {viz.PLOT_DIR}")
     print("Done!")
