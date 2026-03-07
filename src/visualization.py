@@ -458,6 +458,53 @@ def plot_attention_map(dl_model, df, train_idx, test_idx, n=4):
     _savefig('13_attention_map.png')
 
 
+def plot_clustering(cluster_results, y_test):
+    """
+    Visualise K-Means clustering results: PCA scatter plot and cluster-vs-label comparison.
+
+    Left panel: 2D PCA projection of test features, coloured by K-Means cluster assignment.
+    Right panel: Same projection, coloured by true LOS/NLOS labels.
+    This side-by-side comparison shows how well unsupervised clustering recovers the
+    true class structure in the feature space.
+
+    Parameters:
+        cluster_results (dict): Output from run_kmeans_analysis().
+        y_test (np.ndarray): True test labels (0=LOS, 1=NLOS).
+    """
+    X_2d = cluster_results['X_test_2d']
+    clusters = cluster_results['test_labels']
+    acc = cluster_results['test_accuracy']
+    sil = cluster_results['silhouette_test']
+    ari = cluster_results['ari']
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Left: coloured by cluster assignment
+    for label, name, color in [(0, 'Cluster 0 (LOS)', 'steelblue'),
+                                (1, 'Cluster 1 (NLOS)', 'coral')]:
+        mask = clusters == label
+        axes[0].scatter(X_2d[mask, 0], X_2d[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[0].set_title(f'K-Means Clusters\nAcc={acc:.3f}, Silhouette={sil:.3f}, ARI={ari:.3f}')
+    axes[0].set_xlabel('PC1')
+    axes[0].set_ylabel('PC2')
+    axes[0].legend(markerscale=4, fontsize=9)
+
+    # Right: coloured by true labels
+    for label, name, color in [(0, 'LOS (true)', 'steelblue'),
+                                (1, 'NLOS (true)', 'coral')]:
+        mask = y_test == label
+        axes[1].scatter(X_2d[mask, 0], X_2d[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[1].set_title('True Labels (PCA projection)')
+    axes[1].set_xlabel('PC1')
+    axes[1].set_ylabel('PC2')
+    axes[1].legend(markerscale=4, fontsize=9)
+
+    fig.suptitle('Unsupervised Clustering vs True Labels')
+    _savefig('14_clustering.png')
+
+
 def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
                        cls_results, features_df, n=3):
     """

@@ -10,6 +10,7 @@ This script orchestrates the complete 3D Data Analytics pipeline:
   Step 5b: Deep Learning — Train CNN+Transformer on raw 1016-sample CIR waveforms.
   Step 5c: Synthetic Data — SMOTE augmentation for ML + CIR augmentation for DL,
            with comparison against the original (non-augmented) results.
+  Step 5d: Unsupervised Clustering — K-Means baseline on hand-crafted features.
   Step 6: Distance Estimation — Train Ridge, RF, GBT regressors for range prediction.
   Step 7: Visualization — Generate 13+ plots covering all 3D analytics stages.
 
@@ -31,6 +32,7 @@ from src.classification import train_classifiers
 from src.regression import train_regressors
 from src.dl_training import train_dl_classifier
 from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
+from src.clustering import run_kmeans_analysis
 from src import visualization as viz
 
 
@@ -166,6 +168,17 @@ def main():
     delta_auc_dl = dl_result_aug['auc'] - dl_result['auc']
     print(f"  Delta: Accuracy={delta_acc_dl:+.4f}, AUC={delta_auc_dl:+.4f}")
 
+    # ── Step 5d: Unsupervised Learning Baseline ─────────────────────
+    # Apply K-Means clustering (k=2) to the same 18-feature vectors used
+    # by supervised classifiers, to see if LOS/NLOS structure is discoverable
+    # without labels. This provides an unsupervised baseline comparison.
+    print("\n" + "=" * 60)
+    print("STEP 5d: Unsupervised Clustering Baseline")
+    print("=" * 60)
+    cluster_results = run_kmeans_analysis(
+        X_train_cls, y_train_cls, X_test_cls, y_test_cls,
+    )
+
     # ── Step 6: Distance Estimation ──────────────────────────────────
     # Train regressors separately for Path 1 and Path 2 range prediction
     print("\n" + "=" * 60)
@@ -235,6 +248,8 @@ def main():
     viz.plot_roc_curves(cls_results)
     viz.plot_model_comparison(cls_results)
 
+    viz.plot_clustering(cluster_results, y_test_cls)
+
     # Plot transformer attention maps if DL model was trained
     if 'CNN+Transformer' in cls_results:
         viz.plot_attention_map(
@@ -266,6 +281,11 @@ def main():
     print("\nPath 2 Distance Estimation:")
     for name, res in reg_results_p2.items():
         print(f"  {name}: RMSE={res['rmse']:.4f}m, R2={res['r2']:.4f}")
+
+    print("\nUnsupervised Clustering Baseline:")
+    print(f"  K-Means (k=2): Accuracy={cluster_results['test_accuracy']:.4f}, "
+          f"Silhouette={cluster_results['silhouette_test']:.4f}, "
+          f"ARI={cluster_results['ari']:.4f}")
 
     print("\nSynthetic Data Augmentation Impact:")
     print(f"  RF + SMOTE:                Acc={acc_smote:.4f} (delta={delta_acc:+.4f}), "
