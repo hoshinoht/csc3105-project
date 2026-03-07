@@ -5,129 +5,127 @@ This module implements the Data Mining stage for the classification task:
   - Logistic Regression: Linear baseline with balanced class weights.
   - Random Forest: Ensemble bagging classifier with GridSearchCV hyperparameter
     tuning over n_estimators and max_depth.
-  - Gradient Boosted Trees: Ensemble boosting classifier with GridSearchCV tuning
-    over learning_rate, n_estimators, and max_depth.
+  - Histogram Gradient Boosted Trees: Fast histogram-based boosting with
+    GridSearchCV tuning over learning_rate, max_iter, and max_depth.
+  - XGBoost: Gradient boosting with GridSearchCV (if installed).
 
-All models use 5-fold stratified cross-validation for hyperparameter selection,
-ensuring each fold preserves the LOS/NLOS class ratio.
+All models use 3-fold stratified cross-validation for hyperparameter selection.
 
 Evaluation metrics (Data Analysis stage):
-  - Accuracy: Overall correct classification rate
-  - AUC (Area Under ROC Curve): Ranking quality, threshold-independent
-  - Confusion Matrix: True/false positive/negative breakdown
-  - Classification Report: Per-class precision, recall, and F1-score
+  - Accuracy, AUC, Confusion Matrix, Classification Report
 
 Libraries: sklearn (models, GridSearchCV, metrics), numpy
 """
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier, HistGradientBoostingClassifier,
+)
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.metrics import (
     accuracy_score, classification_report, confusion_matrix, roc_curve, auc,
 )
 
+try:
+    from xgboost import XGBClassifier
+    HAS_XGB = True
+except ImportError:
+    HAS_XGB = False
+
 
 def train_classifiers(X_train, y_train, X_test, y_test):
     """
-    Train three ML classifiers and evaluate on the test set.
-
-    Models trained:
-      1. Logistic Regression — linear baseline, fast, interpretable coefficients.
-         Uses class_weight='balanced' to handle the 25/75 LOS/NLOS imbalance
-         in the two-path expanded dataset.
-      2. Random Forest — ensemble of decision trees (bagging). GridSearchCV
-         searches over n_estimators=[100,300] and max_depth=[20,None].
-      3. Gradient Boosted Trees — sequential boosting ensemble. GridSearchCV
-         searches over learning_rate=[0.01,0.1], n_estimators=[100,300],
-         max_depth=[3,6].
+    Train ML classifiers and evaluate on the test set.
 
     Parameters:
-        X_train (np.ndarray): Training feature matrix, shape (N_train, 18).
-        y_train (np.ndarray): Training labels (0=LOS, 1=NLOS), shape (N_train,).
-        X_test (np.ndarray): Test feature matrix, shape (N_test, 18).
-        y_test (np.ndarray): Test labels, shape (N_test,).
+        X_train, y_train: Training data and labels.
+        X_test, y_test: Test data and labels.
 
     Returns:
-        dict: {model_name: {model, y_pred, y_prob, accuracy, auc,
-               confusion_matrix, fpr, tpr, report}} for each classifier.
+        dict: {model_name: {model, y_pred, y_prob, accuracy, auc, ...}}
     """
     results = {}
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     # ── 1. Logistic Regression — linear baseline ─────────────────────
-    # Fast to train, provides a performance floor. class_weight='balanced'
-    # inversely weights classes by their frequency to handle imbalance.
     print("\n--- Logistic Regression ---")
     lr = LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)
     lr.fit(X_train, y_train)
     results['Logistic Regression'] = _evaluate(lr, X_test, y_test)
 
     # ── 2. Random Forest with GridSearchCV ───────────────────────────
-    # Ensemble of decorrelated decision trees via bagging (bootstrap aggregation).
-    # GridSearchCV performs exhaustive search over hyperparameter combinations
-    # using 5-fold stratified CV to select the best configuration.
     print("\n--- Random Forest (GridSearchCV) ---")
-    rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
+    rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=1)
     param_grid = {
-        'n_estimators': [100, 300],   # Number of trees in the forest
-        'max_depth': [20, None],       # Tree depth limit (None = unlimited)
+        'n_estimators': [100, 300, 500],
+        'max_depth': [10, 20, None],
+        'min_samples_leaf': [1, 3],
     }
-    # 5-fold stratified CV ensures each fold has the same LOS/NLOS ratio
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
+    gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=1, verbose=1)
     gs.fit(X_train, y_train)
     print(f"  Best params: {gs.best_params_}")
     results['Random Forest'] = _evaluate(gs.best_estimator_, X_test, y_test)
-    # Store Gini-based feature importances for visualization (feature importance ranking)
     results['Random Forest']['feature_importances'] = gs.best_estimator_.feature_importances_
 
-    # ── 3. Gradient Boosted Trees with GridSearchCV ──────────────────
-    # Sequential ensemble: each tree corrects the errors of the previous one.
-    # More parameters to tune than RF, but often achieves better performance.
+    # ── 3. Histogram Gradient Boosted Trees with GridSearchCV ─────────
+    # HistGradientBoosting is 10-50x faster than GradientBoosting for
+    # large datasets — uses histogram binning like LightGBM.
     print("\n--- Gradient Boosted Trees (GridSearchCV) ---")
-    gbt = GradientBoostingClassifier(random_state=42)
+    # Compute sample weights for class imbalance (HistGBT doesn't support class_weight)
+    class_ratio = (y_train == 0).sum() / max((y_train == 1).sum(), 1)
+    sample_weight = np.where(y_train == 0, 1.0 / class_ratio, 1.0)
+    sample_weight = sample_weight / sample_weight.mean()  # normalize
+
+    gbt = HistGradientBoostingClassifier(random_state=42)
     param_grid_gbt = {
-        'learning_rate': [0.01, 0.1],  # Step size shrinkage (regularization)
-        'n_estimators': [100, 300],     # Number of boosting stages
-        'max_depth': [3, 6],            # Depth of each individual tree
+        'learning_rate': [0.01, 0.05, 0.1],
+        'max_iter': [200, 500],
+        'max_depth': [4, 6, 8],
     }
-    gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
-    gs_gbt.fit(X_train, y_train)
+    gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=1, verbose=1)
+    gs_gbt.fit(X_train, y_train, sample_weight=sample_weight)
     print(f"  Best params: {gs_gbt.best_params_}")
     results['Gradient Boosted Trees'] = _evaluate(gs_gbt.best_estimator_, X_test, y_test)
+
+    # ── 4. XGBoost with GridSearchCV ──────────────────────────────────
+    if HAS_XGB:
+        print("\n--- XGBoost (GridSearchCV) ---")
+        n_neg = int((y_train == 0).sum())
+        n_pos = int((y_train == 1).sum())
+        scale_pos = n_neg / max(n_pos, 1)
+        xgb = XGBClassifier(
+            eval_metric='logloss', random_state=42, n_jobs=1,
+            scale_pos_weight=scale_pos,
+        )
+        param_grid_xgb = {
+            'n_estimators': [200, 500],
+            'max_depth': [4, 6, 8],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'subsample': [0.8, 1.0],
+        }
+        gs_xgb = GridSearchCV(xgb, param_grid_xgb, scoring='f1_weighted',
+                               cv=cv, n_jobs=1, verbose=1)
+        gs_xgb.fit(X_train, y_train)
+        print(f"  Best params: {gs_xgb.best_params_}")
+        results['XGBoost'] = _evaluate(gs_xgb.best_estimator_, X_test, y_test)
+        results['XGBoost']['feature_importances'] = gs_xgb.best_estimator_.feature_importances_
+    else:
+        print("\n--- XGBoost: skipped (xgboost not installed) ---")
 
     return results
 
 
 def _evaluate(model, X_test, y_test):
-    """
-    Evaluate a trained classifier on the test set and compute all metrics.
-
-    Metrics computed:
-      - accuracy: fraction of correctly classified samples
-      - y_prob: predicted probability of NLOS class (for ROC/AUC)
-      - confusion_matrix: 2x2 matrix of TP/FP/TN/FN
-      - fpr, tpr: false/true positive rates at varying thresholds (for ROC curve)
-      - auc: area under the ROC curve (threshold-independent ranking quality)
-      - report: per-class precision, recall, F1-score text summary
-
-    Parameters:
-        model: Trained sklearn classifier with predict() and predict_proba().
-        X_test (np.ndarray): Test feature matrix.
-        y_test (np.ndarray): True test labels.
-
-    Returns:
-        dict: Dictionary containing the model, predictions, and all metrics.
-    """
+    """Evaluate a trained classifier and return metrics dict."""
     y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]  # P(NLOS) for ROC computation
+    y_prob = model.predict_proba(X_test)[:, 1]
 
     acc = accuracy_score(y_test, y_pred)
     report = classification_report(y_test, y_pred, target_names=['LOS', 'NLOS'])
     cm = confusion_matrix(y_test, y_pred)
-    fpr, tpr, _ = roc_curve(y_test, y_prob)  # ROC curve at multiple thresholds
-    roc_auc = auc(fpr, tpr)  # Integrate ROC curve for AUC score
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    roc_auc = auc(fpr, tpr)
 
     print(f"  Accuracy: {acc:.4f}, AUC: {roc_auc:.4f}")
     print(report)

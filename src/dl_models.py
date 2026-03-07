@@ -66,132 +66,134 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:, :x.size(1)]
 
 
+class MultiScaleConv(nn.Module):
+    """
+    Multi-scale first convolutional layer with parallel branches at different kernel sizes.
+
+    Captures both fine-grained (kernel=3) and broad (kernel=7, 15) patterns in the
+    raw CIR waveform simultaneously, then concatenates outputs to 32 channels.
+    """
+
+    def __init__(self, out_channels=32):
+        super().__init__()
+        # Split output channels across 3 kernel sizes
+        c1 = out_channels // 3           # ~10 channels for kernel=3
+        c2 = out_channels // 3           # ~10 channels for kernel=7
+        c3 = out_channels - c1 - c2      # remaining for kernel=15
+        self.branch3 = nn.Conv1d(1, c1, kernel_size=3, padding=1)
+        self.branch7 = nn.Conv1d(1, c2, kernel_size=7, padding=3)
+        self.branch15 = nn.Conv1d(1, c3, kernel_size=15, padding=7)
+        self.bn = nn.BatchNorm1d(out_channels)
+
+    def forward(self, x):
+        # x: [batch, 1, 1016]
+        b3 = self.branch3(x)
+        b7 = self.branch7(x)
+        b15 = self.branch15(x)
+        out = torch.cat([b3, b7, b15], dim=1)  # [batch, 32, 1016]
+        return torch.relu(self.bn(out))
+
+
+class ResidualCNNBlock(nn.Module):
+    """
+    Residual 1D-CNN block: Conv+BN+ReLU → Conv+BN → add residual → ReLU → MaxPool.
+
+    Uses a 1x1 convolution shortcut when input/output channels differ.
+    Residual connections improve gradient flow and enable deeper networks.
+    """
+
+    def __init__(self, in_ch, out_ch, kernel_size=3):
+        super().__init__()
+        padding = kernel_size // 2
+        self.conv1 = nn.Conv1d(in_ch, out_ch, kernel_size, padding=padding)
+        self.bn1 = nn.BatchNorm1d(out_ch)
+        self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, padding=padding)
+        self.bn2 = nn.BatchNorm1d(out_ch)
+        self.pool = nn.MaxPool1d(2)
+
+        # 1x1 conv shortcut for channel mismatch
+        self.shortcut = (nn.Conv1d(in_ch, out_ch, 1) if in_ch != out_ch
+                         else nn.Identity())
+
+    def forward(self, x):
+        residual = self.shortcut(x)
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out = torch.relu(out + residual)
+        return self.pool(out)
+
+
 class CIRTransformerClassifier(nn.Module):
     """
-    Hybrid 1D-CNN + Transformer for LOS/NLOS classification from raw CIR.
+    Hybrid multi-scale CNN with residual blocks + Transformer for LOS/NLOS classification.
 
-    Input:
-        cir: [batch, 1016] — raw CIR waveform (1016 time-domain samples)
-        scalars: [batch, n_scalar] — scalar features from Decawave hardware
-
-    Output:
-        logits: [batch, 1] — binary logit (use BCEWithLogitsLoss for training)
-                Positive logit → NLOS, Negative logit → LOS
+    Architecture:
+      Raw CIR [batch, 1016]
+        → Multi-scale Conv (kernels 3/7/15) → 32 channels + MaxPool (508)
+        → ResidualCNNBlock 32→64 + MaxPool (254)
+        → ResidualCNNBlock 64→128 + MaxPool (127)
+        → Positional Encoding → Transformer Encoder (2 layers, 4 heads)
+        → Global Average Pooling → [batch, 128]
+        → Concat scalars → MLP Head → binary logit
     """
 
     def __init__(self, n_scalar=11, cnn_channels=128, n_heads=4,
                  n_transformer_layers=2, mlp_hidden=64, dropout=0.1):
-        """
-        Parameters:
-            n_scalar (int): Number of scalar features to concatenate (default 11).
-            cnn_channels (int): Output channels of the CNN encoder (default 128).
-            n_heads (int): Number of attention heads in the transformer (default 4).
-            n_transformer_layers (int): Number of transformer encoder layers (default 2).
-            mlp_hidden (int): Hidden dimension of the classification MLP head (default 64).
-            dropout (float): Dropout rate for regularisation (default 0.1).
-        """
         super().__init__()
 
-        # ── 1D-CNN Encoder: 3 convolutional blocks ───────────────────
-        # Progressively increases channels (1→32→64→128) while halving
-        # temporal resolution via MaxPool (1016→508→254→127).
-        # BatchNorm stabilises training; ReLU provides non-linearity.
-        self.cnn = nn.Sequential(
-            # Block 1: Raw CIR (1 channel) → 32 feature maps
-            nn.Conv1d(1, 32, kernel_size=7, padding=3),   # Large kernel for initial patterns
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.MaxPool1d(2),  # 1016 → 508
-
-            # Block 2: 32 → 64 feature maps
-            nn.Conv1d(32, 64, kernel_size=5, padding=2),  # Medium kernel
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.MaxPool1d(2),  # 508 → 254
-
-            # Block 3: 64 → 128 feature maps (final embedding dimension)
-            nn.Conv1d(64, cnn_channels, kernel_size=3, padding=1),  # Small kernel for fine detail
-            nn.BatchNorm1d(cnn_channels),
-            nn.ReLU(),
-            nn.MaxPool1d(2),  # 254 → 127
-        )
+        # ── Multi-scale first layer + residual CNN blocks ─────────────
+        self.multi_scale = MultiScaleConv(out_channels=32)
+        self.pool1 = nn.MaxPool1d(2)  # 1016 → 508
+        self.res_block2 = ResidualCNNBlock(32, 64, kernel_size=5)   # 508 → 254
+        self.res_block3 = ResidualCNNBlock(64, cnn_channels, kernel_size=3)  # 254 → 127
 
         # ── Transformer Encoder ──────────────────────────────────────
-        # Processes the 127-step sequence of 128-dim CNN embeddings.
-        # Self-attention allows each temporal position to attend to all others,
-        # capturing long-range dependencies across the CIR waveform.
         self.pos_enc = PositionalEncoding(cnn_channels, max_len=512)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=cnn_channels, nhead=n_heads,
             dim_feedforward=cnn_channels * 2, dropout=dropout,
-            batch_first=True,  # Input shape: [batch, seq_len, d_model]
+            batch_first=True,
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_transformer_layers)
 
         # ── MLP Classification Head ──────────────────────────────────
-        # Takes the pooled CIR representation (128-dim) concatenated with
-        # scalar features (11-dim) → 139-dim input → 64 hidden → 1 logit.
         self.head = nn.Sequential(
             nn.Linear(cnn_channels + n_scalar, mlp_hidden),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(mlp_hidden, 1),  # Single logit for binary classification
+            nn.Linear(mlp_hidden, 1),
         )
 
-        # ── Attention Weight Storage ─────────────────────────────────
-        # Store attention weights from the first transformer layer for
-        # interpretability/visualization (only captured during eval mode).
         self.last_attention_weights = None
         self._register_attention_hook()
 
     def _register_attention_hook(self):
-        """
-        Hook into the first transformer layer's self-attention to capture weights.
-
-        This enables visualization of which CIR regions the model attends to
-        when making LOS/NLOS predictions. The hook only runs during evaluation
-        (not training) to avoid impacting training performance.
-        """
+        """Hook into the first transformer layer's self-attention to capture weights."""
         def hook_fn(module, input, output):
-            # Re-run attention to get weights (the standard forward doesn't return them)
             if not self.training:
                 src = input[0] if isinstance(input, tuple) else input
                 with torch.no_grad():
                     _, self.last_attention_weights = module.self_attn(
                         src, src, src, need_weights=True, average_attn_weights=True
                     )
-
-        # Register on the first transformer encoder layer
         self.transformer.layers[0].register_forward_hook(hook_fn)
 
     def forward(self, cir, scalars):
-        """
-        Forward pass: CIR waveform + scalar features → LOS/NLOS logit.
+        """Forward pass: CIR [batch, 1016] + scalars → logit [batch, 1]."""
+        x = cir.unsqueeze(1)  # [batch, 1, 1016]
 
-        Parameters:
-            cir (torch.Tensor): Raw CIR waveform, shape [batch, 1016].
-            scalars (torch.Tensor): Scalar features, shape [batch, n_scalar].
+        # Multi-scale CNN + residual blocks → [batch, 128, 127]
+        x = self.multi_scale(x)
+        x = self.pool1(x)
+        x = self.res_block2(x)
+        x = self.res_block3(x)
 
-        Returns:
-            torch.Tensor: Binary logit, shape [batch, 1].
-        """
-        # Reshape CIR for 1D convolution: [batch, 1016] → [batch, 1, 1016]
-        x = cir.unsqueeze(1)
-
-        # CNN encoder: extract local features → [batch, 128, 127]
-        x = self.cnn(x)
-
-        # Reshape for transformer: [batch, 128, 127] → [batch, 127, 128]
-        # (sequence of 127 temporal positions, each with 128-dim embedding)
+        # Transformer: [batch, 127, 128]
         x = x.permute(0, 2, 1)
-
-        # Add positional encoding and process through transformer
         x = self.pos_enc(x)
-        x = self.transformer(x)  # Self-attention across all 127 positions
+        x = self.transformer(x)
 
-        # Global average pooling: aggregate all temporal positions → [batch, 128]
+        # Global average pooling + classification
         x = x.mean(dim=1)
-
-        # Concatenate scalar features and classify → [batch, 139] → [batch, 1]
         combined = torch.cat([x, scalars], dim=1)
         return self.head(combined)

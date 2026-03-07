@@ -100,7 +100,7 @@ def apply_smote(X_train, y_train, target_ratio=1.0, k_neighbors=5, random_state=
     X_resampled = np.vstack([X_train, synthetic_samples])
     y_resampled = np.concatenate([y_train, synthetic_labels])
 
-    print(f"  SMOTE: Generated {n_synthetic} synthetic {['LOS', 'NLOS'][minority_class]} samples")
+    print(f"  SMOTE: Generated {n_synthetic} synthetic {['LOS', 'NLOS'][int(minority_class)]} samples")
     print(f"  Class distribution: LOS={int((y_resampled == 0).sum())}, "
           f"NLOS={int((y_resampled == 1).sum())}")
 

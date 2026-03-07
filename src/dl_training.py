@@ -140,6 +140,9 @@ def train_dl_classifier(X_cir_train, X_scalar_train, y_train,
             scalar_batch = scalar_batch.to(device)
             label_batch = label_batch.to(device)
 
+            # Label smoothing: soften hard 0/1 labels to reduce overconfidence
+            label_batch = label_batch * 0.95 + 0.025
+
             optimizer.zero_grad()                              # Reset gradients
             logits = model(cir_batch, scalar_batch).squeeze(-1)  # Forward pass → logits
             loss = criterion(logits, label_batch)              # Compute loss
