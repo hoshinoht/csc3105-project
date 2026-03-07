@@ -10,6 +10,7 @@ This script orchestrates the complete 3D Data Analytics pipeline:
   Step 5b: Deep Learning — Train CNN+Transformer on raw 1016-sample CIR waveforms.
   Step 5c: Synthetic Data — SMOTE augmentation for ML + CIR augmentation for DL,
            with comparison against the original (non-augmented) results.
+  Step 5d: Unsupervised Clustering — K-Means baseline on hand-crafted features.
   Step 6: Distance Estimation — Train Ridge, RF, GBT regressors for range prediction.
   Step 7: Visualization — Generate 13+ plots covering all 3D analytics stages.
 
@@ -18,21 +19,21 @@ Usage: python main.py
 Libraries: numpy, and all project modules under src/
 """
 
+from src import visualization as viz
+from src.ensemble import build_ensemble
+from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
+from src.dl_training import train_dl_classifier
+from src.regression import train_regressors
+from src.classification import train_classifiers
+from src.feature_engineering import build_features
+from src.peak_detection import extract_two_paths
+from src.preprocessing import preprocess, scale_and_split, SCALAR_FEATURES
+from src.data_loader import load_dataset
 import numpy as np
 import warnings
 warnings.filterwarnings('ignore')  # Suppress sklearn convergence warnings
 
 # Import project modules for each pipeline stage
-from src.data_loader import load_dataset
-from src.preprocessing import preprocess, scale_and_split, SCALAR_FEATURES
-from src.peak_detection import extract_two_paths
-from src.feature_engineering import build_features
-from src.classification import train_classifiers
-from src.regression import train_regressors
-from src.dl_training import train_dl_classifier
-from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
-from src.ensemble import build_ensemble
-from src import visualization as viz
 
 
 def main():
@@ -91,7 +92,8 @@ def main():
     print("\n" + "=" * 60)
     print("STEP 5: LOS/NLOS Classification")
     print("=" * 60)
-    cls_results = train_classifiers(X_train_cls, y_train_cls, X_test_cls, y_test_cls)
+    cls_results = train_classifiers(
+        X_train_cls, y_train_cls, X_test_cls, y_test_cls)
 
     # ── Step 5b: Deep Learning on Raw CIR ────────────────────────────
     # Train CNN+Transformer directly on the raw 1016-sample CIR waveforms
@@ -101,7 +103,8 @@ def main():
     print("=" * 60)
 
     # Prepare DL input: raw CIR waveforms + scaled scalar features
-    cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
+    cir_cols = [c for c in df.columns if c.startswith(
+        'CIR') and c != 'CIR_PWR']
     X_cir_train = df_scaled[cir_cols].values[train_idx]
     X_cir_test = df_scaled[cir_cols].values[test_idx]
     X_scalar_train = df_scaled[SCALAR_FEATURES].values[train_idx]
@@ -125,7 +128,8 @@ def main():
 
     # --- SMOTE on ML feature vectors ---
     print("\n>> SMOTE augmentation for ML classifiers")
-    X_smote, y_smote, n_smote = apply_smote(X_train_cls, y_train_cls, target_ratio=0.5)
+    X_smote, y_smote, n_smote = apply_smote(
+        X_train_cls, y_train_cls, target_ratio=0.5)
 
     # Re-train the best ML model (Random Forest) with SMOTE-augmented data
     from sklearn.ensemble import RandomForestClassifier
@@ -191,7 +195,8 @@ def main():
     y_test_p1 = labels_range[p1_mask_test]
 
     print("\n>> Path 1 Distance Estimation")
-    reg_results_p1 = train_regressors(X_train_p1, y_train_p1, X_test_p1, y_test_p1, "Path 1")
+    reg_results_p1 = train_regressors(
+        X_train_p1, y_train_p1, X_test_p1, y_test_p1, "Path 1")
 
     # Path 2 regression: use Path 2 features + original RANGE as extra feature
     # (Hint from spec: use FP_IDX and measured range to correlate to second path)
@@ -212,7 +217,8 @@ def main():
     # since their range labels would be unreliable
     valid_train = path2_amp[p2_mask_train] > 0
     valid_test = path2_amp[p2_mask_test] > 0
-    print(f"\n  Path 2 valid samples: train={valid_train.sum()}, test={valid_test.sum()}")
+    print(
+        f"\n  Path 2 valid samples: train={valid_train.sum()}, test={valid_test.sum()}")
 
     print("\n>> Path 2 Distance Estimation")
     reg_results_p2 = train_regressors(
@@ -244,6 +250,8 @@ def main():
     viz.plot_confusion_matrices(cls_results, y_test_cls)
     viz.plot_roc_curves(cls_results)
     viz.plot_model_comparison(cls_results)
+
+    viz.plot_clustering(cluster_results, y_test_cls)
 
     # Plot transformer attention maps if DL model was trained
     if 'CNN+Transformer' in cls_results:
@@ -288,7 +296,8 @@ def main():
     # DL model on its own balanced test set (already evaluated)
     if 'CNN+Transformer' in cls_results:
         dl_res = cls_results['CNN+Transformer']
-        print(f"  {'CNN+Transformer':30s}: Accuracy={dl_res['accuracy']:.4f}, AUC={dl_res['auc']:.4f}")
+        print(
+            f"  {'CNN+Transformer':30s}: Accuracy={dl_res['accuracy']:.4f}, AUC={dl_res['auc']:.4f}")
 
     # ── DL+ML Ensemble Fusion ─────────────────────────────────────
     # Average best ML ensemble probabilities with DL probabilities on balanced test set
@@ -300,13 +309,15 @@ def main():
             for n in best_ml_names
         ])
         ml_ens_prob = ml_fair_probs.mean(axis=1)
-        dl_prob_fair = dl_res['y_prob']  # DL already evaluated on balanced test set
+        # DL already evaluated on balanced test set
+        dl_prob_fair = dl_res['y_prob']
         combined_prob = 0.5 * ml_ens_prob + 0.5 * dl_prob_fair
         combined_pred = (combined_prob >= 0.5).astype(int)
         acc_combined = acc_fn(y_test_fair, combined_pred)
         fpr_c, tpr_c, _ = roc_fn(y_test_fair, combined_prob)
         auc_combined = auc_fn(fpr_c, tpr_c)
-        print(f"  {'DL+ML Ensemble Fusion':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
+        print(
+            f"  {'DL+ML Ensemble Fusion':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
 
     # Ensemble models don't have a .model with predict_proba — evaluate via re-averaging
     for ens_name in ['Ensemble (Average)', 'Ensemble (Stacked)']:
@@ -328,7 +339,8 @@ def main():
                 acc_ens = acc_fn(y_test_fair, ens_pred)
                 fpr_e, tpr_e, _ = roc_fn(y_test_fair, ens_prob)
                 auc_ens = auc_fn(fpr_e, tpr_e)
-                print(f"  {ens_name:30s}: Accuracy={acc_ens:.4f}, AUC={auc_ens:.4f} (fair)")
+                print(
+                    f"  {ens_name:30s}: Accuracy={acc_ens:.4f}, AUC={auc_ens:.4f} (fair)")
 
     # ── Summary ──────────────────────────────────────────────────────
     print("\n" + "=" * 60)
@@ -336,7 +348,8 @@ def main():
     print("=" * 60)
     print("\nClassification Results:")
     for name, res in cls_results.items():
-        print(f"  {name}: Accuracy={res['accuracy']:.4f}, AUC={res['auc']:.4f}")
+        print(
+            f"  {name}: Accuracy={res['accuracy']:.4f}, AUC={res['auc']:.4f}")
 
     print("\nPath 1 Distance Estimation:")
     for name, res in reg_results_p1.items():
@@ -345,6 +358,11 @@ def main():
     print("\nPath 2 Distance Estimation:")
     for name, res in reg_results_p2.items():
         print(f"  {name}: RMSE={res['rmse']:.4f}m, R2={res['r2']:.4f}")
+
+    print("\nUnsupervised Clustering Baseline:")
+    print(f"  K-Means (k=2): Accuracy={cluster_results['test_accuracy']:.4f}, "
+          f"Silhouette={cluster_results['silhouette_test']:.4f}, "
+          f"ARI={cluster_results['ari']:.4f}")
 
     print("\nSynthetic Data Augmentation Impact:")
     print(f"  RF + SMOTE:                Acc={acc_smote:.4f} (delta={delta_acc:+.4f}), "
@@ -356,7 +374,8 @@ def main():
     if ensemble_results:
         print("\nEnsemble Results:")
         for name, res in ensemble_results.items():
-            print(f"  {name}: Accuracy={res['accuracy']:.4f}, AUC={res['auc']:.4f}")
+            print(
+                f"  {name}: Accuracy={res['accuracy']:.4f}, AUC={res['auc']:.4f}")
 
     print(f"\nAll plots saved to {viz.PLOT_DIR}")
     print("Done!")
