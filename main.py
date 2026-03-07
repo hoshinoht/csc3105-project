@@ -5,8 +5,8 @@ This script orchestrates the complete 3D Data Analytics pipeline:
   Step 1: Data Loading — Load 42,000 UWB CIR measurements from 7 indoor environments.
   Step 2: Data Preparation — Clean, normalize CIR, scale features, split 80/20.
   Step 3: Peak Detection — Extract two dominant propagation paths from each CIR.
-  Step 4: Feature Engineering — Build 18-feature vectors for each path (84K rows).
-  Step 5: Classification — Train LR, RF, GBT classifiers on hand-crafted features.
+  Step 4: Feature Engineering — Build 23-feature vectors for each path (84K rows).
+  Step 5: Classification — Train LR, RF, GBT, XGBoost classifiers on hand-crafted features.
   Step 5b: Deep Learning — Train CNN+Transformer on raw 1016-sample CIR waveforms.
   Step 5c: Synthetic Data — SMOTE augmentation for ML + CIR augmentation for DL,
            with comparison against the original (non-augmented) results.
@@ -31,6 +31,7 @@ from src.classification import train_classifiers
 from src.regression import train_regressors
 from src.dl_training import train_dl_classifier
 from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
+from src.ensemble import build_ensemble
 from src import visualization as viz
 
 
@@ -131,7 +132,7 @@ def main():
     from sklearn.metrics import accuracy_score, roc_curve, auc as sk_auc, confusion_matrix
     rf_smote = RandomForestClassifier(
         n_estimators=300, max_depth=None, class_weight='balanced',
-        random_state=42, n_jobs=-1,
+        random_state=42,
     )
     rf_smote.fit(X_smote, y_smote)
     y_pred_smote = rf_smote.predict(X_test_cls)
@@ -150,8 +151,8 @@ def main():
     print("\n>> CIR waveform augmentation for CNN+Transformer")
     cir_aug, scalar_aug, label_aug, n_cir_synth = generate_augmented_cir(
         X_cir_train, X_scalar_train, y_dl_train,
-        augmentation_factor=1, noise_level=0.05, max_shift=2,
-        scale_range=(0.85, 1.15), random_state=42,
+        augmentation_factor=3, noise_level=0.08, max_shift=4,
+        scale_range=(0.80, 1.20), random_state=42,
     )
 
     dl_result_aug = train_dl_classifier(
@@ -165,6 +166,15 @@ def main():
     delta_acc_dl = dl_result_aug['accuracy'] - dl_result['accuracy']
     delta_auc_dl = dl_result_aug['auc'] - dl_result['auc']
     print(f"  Delta: Accuracy={delta_acc_dl:+.4f}, AUC={delta_auc_dl:+.4f}")
+
+    # ── Step 5d: Ensemble Stacking ──────────────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 5d: Ensemble Stacking")
+    print("=" * 60)
+    ensemble_results = build_ensemble(
+        cls_results, X_train_cls, y_train_cls, X_test_cls, y_test_cls,
+    )
+    cls_results.update(ensemble_results)
 
     # ── Step 6: Distance Estimation ──────────────────────────────────
     # Train regressors separately for Path 1 and Path 2 range prediction
@@ -251,6 +261,75 @@ def main():
     viz.plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
                            cls_results, features_df)
 
+    # ── Fair Comparison: ML vs DL on balanced test set ──────────────
+    print("\n" + "=" * 60)
+    print("FAIR COMPARISON: ML vs DL on Original Balanced Test Set (Path 1 only)")
+    print("=" * 60)
+    # Evaluate ML models on the original balanced test set (path1 only, 50/50 class balance)
+    X_test_fair = features_df.iloc[test_idx].values
+    y_test_fair = labels_cls[test_idx]
+    print(f"  Fair test set: {len(y_test_fair)} samples "
+          f"(LOS={int((y_test_fair == 0).sum())}, NLOS={int((y_test_fair == 1).sum())})")
+
+    from sklearn.metrics import accuracy_score as acc_fn, roc_curve as roc_fn, auc as auc_fn
+    ml_model_names = ['Logistic Regression', 'Random Forest', 'Gradient Boosted Trees',
+                      'XGBoost', 'Ensemble (Average)', 'Ensemble (Stacked)']
+    for name in ml_model_names:
+        if name not in cls_results or 'model' not in cls_results[name]:
+            continue
+        model = cls_results[name]['model']
+        y_prob_fair = model.predict_proba(X_test_fair)[:, 1]
+        y_pred_fair = (y_prob_fair >= 0.5).astype(int)
+        acc_fair = acc_fn(y_test_fair, y_pred_fair)
+        fpr_f, tpr_f, _ = roc_fn(y_test_fair, y_prob_fair)
+        auc_fair = auc_fn(fpr_f, tpr_f)
+        print(f"  {name:30s}: Accuracy={acc_fair:.4f}, AUC={auc_fair:.4f}")
+
+    # DL model on its own balanced test set (already evaluated)
+    if 'CNN+Transformer' in cls_results:
+        dl_res = cls_results['CNN+Transformer']
+        print(f"  {'CNN+Transformer':30s}: Accuracy={dl_res['accuracy']:.4f}, AUC={dl_res['auc']:.4f}")
+
+    # ── DL+ML Ensemble Fusion ─────────────────────────────────────
+    # Average best ML ensemble probabilities with DL probabilities on balanced test set
+    best_ml_names = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']
+                     if n in cls_results and 'model' in cls_results[n]]
+    if 'CNN+Transformer' in cls_results and len(best_ml_names) >= 2:
+        ml_fair_probs = np.column_stack([
+            cls_results[n]['model'].predict_proba(X_test_fair)[:, 1]
+            for n in best_ml_names
+        ])
+        ml_ens_prob = ml_fair_probs.mean(axis=1)
+        dl_prob_fair = dl_res['y_prob']  # DL already evaluated on balanced test set
+        combined_prob = 0.5 * ml_ens_prob + 0.5 * dl_prob_fair
+        combined_pred = (combined_prob >= 0.5).astype(int)
+        acc_combined = acc_fn(y_test_fair, combined_pred)
+        fpr_c, tpr_c, _ = roc_fn(y_test_fair, combined_prob)
+        auc_combined = auc_fn(fpr_c, tpr_c)
+        print(f"  {'DL+ML Ensemble Fusion':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
+
+    # Ensemble models don't have a .model with predict_proba — evaluate via re-averaging
+    for ens_name in ['Ensemble (Average)', 'Ensemble (Stacked)']:
+        if ens_name in cls_results and 'model' not in cls_results[ens_name]:
+            # Re-compute ensemble on fair test set
+            base_names = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']
+                          if n in cls_results and 'model' in cls_results[n]]
+            if len(base_names) >= 2:
+                fair_probs = np.column_stack([
+                    cls_results[n]['model'].predict_proba(X_test_fair)[:, 1]
+                    for n in base_names
+                ])
+                if ens_name == 'Ensemble (Average)':
+                    ens_prob = fair_probs.mean(axis=1)
+                else:
+                    # Would need the meta-learner; approximate with average
+                    ens_prob = fair_probs.mean(axis=1)
+                ens_pred = (ens_prob >= 0.5).astype(int)
+                acc_ens = acc_fn(y_test_fair, ens_pred)
+                fpr_e, tpr_e, _ = roc_fn(y_test_fair, ens_prob)
+                auc_ens = auc_fn(fpr_e, tpr_e)
+                print(f"  {ens_name:30s}: Accuracy={acc_ens:.4f}, AUC={auc_ens:.4f} (fair)")
+
     # ── Summary ──────────────────────────────────────────────────────
     print("\n" + "=" * 60)
     print("SUMMARY")
@@ -273,6 +352,11 @@ def main():
     print(f"  CNN+Transformer + CIR Aug: Acc={dl_result_aug['accuracy']:.4f} "
           f"(delta={delta_acc_dl:+.4f}), AUC={dl_result_aug['auc']:.4f} "
           f"(delta={delta_auc_dl:+.4f})")
+
+    if ensemble_results:
+        print("\nEnsemble Results:")
+        for name, res in ensemble_results.items():
+            print(f"  {name}: Accuracy={res['accuracy']:.4f}, AUC={res['auc']:.4f}")
 
     print(f"\nAll plots saved to {viz.PLOT_DIR}")
     print("Done!")

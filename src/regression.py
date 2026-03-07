@@ -57,7 +57,7 @@ def train_regressors(X_train, y_train, X_test, y_test, path_name=""):
         # Random Forest Regressor: Ensemble of 200 decision trees (bagging).
         # Captures non-linear relationships between features and range.
         'Random Forest Regressor': RandomForestRegressor(
-            n_estimators=200, random_state=42, n_jobs=-1,
+            n_estimators=200, random_state=42,
         ),
 
         # Gradient Boosted Regressor: Sequential ensemble of 200 boosted trees.

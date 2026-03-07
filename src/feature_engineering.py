@@ -14,7 +14,10 @@ This module performs feature extraction and transformation (Data Preparation sta
 
   2. Appends 9 shared scalar features from the Decawave hardware diagnostics.
 
-  3. Adds a path_id indicator (1 or 2) so classifiers can distinguish which path.
+  3. Adds physically meaningful shared features:
+     - path_delay_separation: CIR sample delay between path 2 and path 1
+     - path1_to_fp_offset: deviation of detected path 1 from hardware FP_IDX
+     - relative_power: first-path power fraction (FP_AMP1 / CIR_PWR)
 
   4. Performs two-path label expansion (42K → 84K samples):
      - For LOS samples: Path 1 = LOS, Path 2 = NLOS
@@ -30,7 +33,7 @@ Libraries: numpy (array ops), pandas (DataFrame construction), scipy.stats.kurto
 
 import numpy as np
 import pandas as pd
-from scipy.stats import kurtosis
+from scipy.stats import kurtosis as scipy_kurtosis
 
 
 # Shared scalar features from the Decawave DWM1000 hardware diagnostics.
@@ -49,6 +52,64 @@ SHARED_SCALAR = [
 # Speed of light in meters per nanosecond — used to convert CIR sample offsets
 # (1 ns resolution) into physical distances for Path 2 range estimation.
 SPEED_OF_LIGHT_NS = 0.2998  # m/ns
+
+
+def _compute_cir_stats(cir_data, path_idx):
+    """
+    Compute 5 CIR statistical features per path (vectorized for speed).
+
+    Features capture the power delay profile shape and energy distribution,
+    which differ between LOS (concentrated energy) and NLOS (spread energy).
+
+    Returns:
+        dict of 5 feature arrays, each shape (N,).
+    """
+    n = len(path_idx)
+    n_cir = cir_data.shape[1]
+
+    # Power delay profile: squared CIR amplitudes
+    pdp = cir_data ** 2  # (N, 1016)
+    total_power = pdp.sum(axis=1)  # (N,)
+    valid = total_power > 0
+
+    # Time index array for moment calculations
+    k = np.arange(n_cir, dtype=float)  # (1016,)
+
+    # Mean excess delay: first moment of PDP (vectorized)
+    mean_delay = np.zeros(n)
+    mean_delay[valid] = (pdp[valid] @ k) / total_power[valid]
+
+    # RMS delay spread: sqrt of second central moment
+    rms_delay = np.zeros(n)
+    k_centered = k[np.newaxis, :] - mean_delay[:, np.newaxis]  # (N, 1016)
+    variance = np.zeros(n)
+    variance[valid] = np.sum(k_centered[valid] ** 2 * pdp[valid], axis=1) / total_power[valid]
+    rms_delay[valid] = np.sqrt(variance[valid])
+
+    # Kurtosis of full CIR (vectorized via scipy)
+    kurtosis_full = scipy_kurtosis(cir_data, axis=1, fisher=True)
+
+    # Max-to-mean ratio
+    max_to_mean = np.zeros(n)
+    cir_mean = cir_data.mean(axis=1)
+    cir_max = cir_data.max(axis=1)
+    pos_mean = cir_mean > 0
+    max_to_mean[pos_mean] = cir_max[pos_mean] / cir_mean[pos_mean]
+
+    # Tail energy ratio: energy from path_idx onward / total (vectorized)
+    # Cumulative sum from the right: cumsum_r[i, j] = sum(pdp[i, j:])
+    tail_energy_ratio = np.zeros(n)
+    idx_arr = np.clip(path_idx.astype(int), 0, n_cir - 1)
+    pdp_cumsum_r = np.cumsum(pdp[:, ::-1], axis=1)[:, ::-1]  # reverse cumsum
+    tail_energy_ratio[valid] = pdp_cumsum_r[np.arange(n)[valid], idx_arr[valid]] / total_power[valid]
+
+    return {
+        'rms_delay_spread': rms_delay,
+        'mean_excess_delay': mean_delay,
+        'kurtosis_full': kurtosis_full,
+        'max_to_mean': max_to_mean,
+        'tail_energy_ratio': tail_energy_ratio,
+    }
 
 
 def _compute_path_features(cir_data, path_idx, path_amp, other_amp, stdev_noise):
@@ -126,7 +187,7 @@ def _compute_path_features(cir_data, path_idx, path_amp, other_amp, stdev_noise)
         #    High kurtosis → sharp/spiky peak (typical of LOS direct paths).
         #    Low kurtosis → flat/spread shape (typical of NLOS scattered paths). ──
         if len(window) > 3:
-            features['kurtosis_local'][i] = kurtosis(window, fisher=True)
+            features['kurtosis_local'][i] = scipy_kurtosis(window, fisher=True)
 
         # ── Energy ratio: fraction of total CIR energy in this path's window.
         #    High ratio means this path dominates the CIR (likely LOS). ──
@@ -144,6 +205,10 @@ def _compute_path_features(cir_data, path_idx, path_amp, other_amp, stdev_noise)
         if other_amp[i] > 0:
             features['amplitude_ratio'][i] = amp / other_amp[i]
 
+    # Merge CIR statistical features
+    cir_stats = _compute_cir_stats(cir_data, path_idx)
+    features.update(cir_stats)
+
     return pd.DataFrame(features)
 
 
@@ -152,10 +217,10 @@ def build_features(df, path1_idx, path1_amp, path2_idx, path2_amp):
     Build the two-path expanded dataset (84K rows from 42K original samples).
 
     Each original sample produces TWO rows — one per detected path — with:
-      - 8 per-path features (prefixed 'p_')
+      - 13 per-path features (prefixed 'p_'): 8 waveform + 5 CIR statistics
       - 9 shared scalar features (from hardware diagnostics)
-      - 1 path_id indicator (1 or 2)
-    Total: 18 features per row.
+      - 3 shared derived features: path_delay_separation, path1_to_fp_offset, relative_power
+    Total: 25 features per row.
 
     Two-path NLOS labeling logic (from the problem statement):
       - LOS sample (NLOS=0): Path 1 → LOS (0), Path 2 → NLOS (1)
@@ -198,13 +263,28 @@ def build_features(df, path1_idx, path1_amp, path2_idx, path2_amp):
     # ── Append shared scalar features (same for both paths of a sample) ──
     shared = df[SHARED_SCALAR].reset_index(drop=True)
 
-    # Build Path 1 rows: per-path features + shared scalars + path_id=1
-    path1_df = pd.concat([p1_feats, shared], axis=1)
-    path1_df['path_id'] = 1
+    # ── Compute physically meaningful shared features ───────────────
+    # Path delay separation: temporal gap between the two detected paths
+    path_delay_separation = path2_idx - path1_idx
+    # Path 1 to FP offset: deviation of detected path 1 from hardware first-path index
+    path1_to_fp_offset = path1_idx - fp_idx
+    # Relative power: first-path power as fraction of total CIR power (strong LOS/NLOS discriminator)
+    cir_pwr = df['CIR_PWR'].values
+    relative_power = np.zeros(len(df))
+    valid_pwr = cir_pwr > 0
+    relative_power[valid_pwr] = df['FP_AMP1'].values[valid_pwr] / cir_pwr[valid_pwr]
 
-    # Build Path 2 rows: per-path features + shared scalars + path_id=2
+    # Build Path 1 rows: per-path features + shared scalars + new shared features
+    path1_df = pd.concat([p1_feats, shared], axis=1)
+    path1_df['path_delay_separation'] = path_delay_separation
+    path1_df['path1_to_fp_offset'] = path1_to_fp_offset.astype(float)
+    path1_df['relative_power'] = relative_power
+
+    # Build Path 2 rows: per-path features + shared scalars + new shared features
     path2_df = pd.concat([p2_feats, shared], axis=1)
-    path2_df['path_id'] = 2
+    path2_df['path_delay_separation'] = path_delay_separation
+    path2_df['path1_to_fp_offset'] = path1_to_fp_offset.astype(float)
+    path2_df['relative_power'] = relative_power
 
     # ── Two-path NLOS labeling ────────────────────────────────────────
     # Path 1 inherits the original label: LOS(0) stays LOS, NLOS(1) stays NLOS

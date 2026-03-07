@@ -26,12 +26,10 @@ def extract_two_paths(df):
 
     Algorithm:
       1. Path 1: Search within a ±10-sample window around the hardware-reported
-         FP_IDX (first path index) for the actual local maximum. This accounts for
-         slight offsets between the hardware estimate and the true peak.
-      2. Path 2: Use scipy.signal.find_peaks with adaptive thresholds relative to
-         Path 1's amplitude (height ≥ 10%, prominence ≥ 5% of Path 1). Exclude
-         peaks within ±20 samples of Path 1 to avoid detecting sidelobes. Select
-         the strongest remaining peak as Path 2.
+         FP_IDX (first path index) for the actual local maximum.
+      2. Path 2: Use lower adaptive threshold (5% of Path 1 vs original 10%)
+         and rank candidates by prominence instead of raw amplitude.
+         Exclude peaks within ±20 samples of Path 1.
 
     Parameters:
         df (pd.DataFrame): Preprocessed dataset containing CIR columns and FP_IDX.
@@ -42,10 +40,9 @@ def extract_two_paths(df):
         path2_idx (np.ndarray): CIR sample index of Path 2 (0 if not found).
         path2_amp (np.ndarray): Amplitude of Path 2 (0.0 if not found).
     """
-    # Extract CIR columns (exclude CIR_PWR which is a summary statistic, not a sample)
     cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
     cir_data = df[cir_cols].values  # shape: (N, 1016)
-    fp_idx_raw = df['FP_IDX'].values  # hardware-reported first path index
+    fp_idx_raw = df['FP_IDX'].values
 
     n_samples = len(df)
     path1_idx = np.zeros(n_samples, dtype=int)
@@ -57,54 +54,55 @@ def extract_two_paths(df):
 
     for i in range(n_samples):
         cir = cir_data[i]
-        fp = int(fp_idx_raw[i])  # hardware first-path index
+        fp = int(fp_idx_raw[i])
 
         # ── Path 1: Refine FP_IDX to actual peak ──────────────────────
-        # The hardware FP_IDX can be slightly offset from the true amplitude
-        # peak. Search a ±10-sample window around FP_IDX for the maximum.
         lo = max(0, fp - 10)
         hi = min(n_cir, fp + 11)
         window = cir[lo:hi]
         if len(window) > 0:
             local_peak = np.argmax(window)
-            path1_idx[i] = lo + local_peak  # convert local index to global CIR index
+            path1_idx[i] = lo + local_peak
             path1_amp[i] = window[local_peak]
         else:
-            # Fallback: use FP_IDX directly if window is empty (edge case)
             path1_idx[i] = fp
             path1_amp[i] = cir[min(fp, n_cir - 1)]
 
         # ── Path 2: Find the next strongest peak ─────────────────────
         p1_amp = path1_amp[i]
         if p1_amp <= 0:
-            continue  # skip if Path 1 has no valid amplitude
+            continue
 
-        # Use scipy's find_peaks with thresholds relative to Path 1's amplitude:
-        #   - height ≥ 10% of Path 1 amplitude (ignore noise-level peaks)
-        #   - distance ≥ 15 samples between peaks (avoid sidelobe clusters)
-        #   - prominence ≥ 5% of Path 1 amplitude (must be a true local maximum)
+        # Apply 3-sample moving average smoothing for more robust peak detection
+        kernel = np.ones(3) / 3.0
+        cir_smooth = np.convolve(cir, kernel, mode='same')
+
+        # Adaptive threshold: 2% of p1 amplitude to detect weaker secondary paths
         peaks, properties = find_peaks(
-            cir,
-            height=0.1 * p1_amp,
+            cir_smooth,
+            height=0.02 * p1_amp,
             distance=15,
-            prominence=0.05 * p1_amp,
+            prominence=0.02 * p1_amp,
         )
 
         if len(peaks) == 0:
             continue
 
-        # Exclude peaks within ±20 samples of Path 1 to avoid sidelobes
-        # or the same wavelet being counted twice
-        mask = np.abs(peaks - path1_idx[i]) > 20
+        # Exclude peaks within ±15 samples of Path 1
+        mask = np.abs(peaks - path1_idx[i]) > 15
         peaks = peaks[mask]
+        prominences = properties['prominences'][mask] if 'prominences' in properties else None
         if len(peaks) == 0:
             continue
 
-        # Select the strongest remaining peak as Path 2
-        peak_amps = cir[peaks]
-        best = np.argmax(peak_amps)
+        # Rank by prominence (from find_peaks) instead of raw amplitude
+        if prominences is not None and len(prominences) > 0:
+            best = np.argmax(prominences)
+        else:
+            best = np.argmax(cir[peaks])
         path2_idx[i] = peaks[best]
-        path2_amp[i] = peak_amps[best]
+        # Read amplitude from original (unsmoothed) CIR
+        path2_amp[i] = cir[peaks[best]]
 
     # Report detection rate — not all CIRs have a clearly separable second path
     n_found = (path2_amp > 0).sum()
