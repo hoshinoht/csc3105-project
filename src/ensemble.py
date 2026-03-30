@@ -66,6 +66,7 @@ def build_ensemble(cls_results, X_train, y_train, X_test, y_test):
     stack_pred = (stack_prob >= 0.5).astype(int)
 
     stack_results = _compute_metrics(y_test, stack_pred, stack_prob, "Ensemble (Stacked)")
+    stack_results['model'] = meta  # Store meta-learner for fair comparison
 
     return {
         'Ensemble (Average)': avg_results,

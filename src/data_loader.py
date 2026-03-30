@@ -19,7 +19,7 @@ import os
 import pandas as pd
 
 
-def load_dataset(dataset_dir='dataset/'):
+def load_dataset(dataset_dir=None):
     """
     Load all CSV parts from the dataset directory and return a single DataFrame.
 
@@ -34,6 +34,11 @@ def load_dataset(dataset_dir='dataset/'):
         pd.DataFrame: Combined dataset with 42000 rows x 1031 columns
                       (15 scalar features + 1016 CIR samples + 1 NLOS label).
     """
+    # Default to 'dataset/' relative to the project root (where main.py lives),
+    # not relative to the caller's working directory.
+    if dataset_dir is None:
+        dataset_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'dataset')
+
     frames = []
 
     # Iterate through sorted CSV files for deterministic loading order

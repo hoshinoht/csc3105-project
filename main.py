@@ -20,6 +20,7 @@ Libraries: numpy, and all project modules under src/
 """
 
 from src import visualization as viz
+from src.clustering import run_kmeans_analysis
 from src.ensemble import build_ensemble
 from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
 from src.dl_training import train_dl_classifier
@@ -31,7 +32,9 @@ from src.preprocessing import preprocess, scale_and_split, SCALAR_FEATURES
 from src.data_loader import load_dataset
 import numpy as np
 import warnings
-warnings.filterwarnings('ignore')  # Suppress sklearn convergence warnings
+from sklearn.exceptions import ConvergenceWarning
+warnings.filterwarnings('ignore', category=ConvergenceWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 # Import project modules for each pipeline stage
 
@@ -59,7 +62,7 @@ def main():
     print("\n" + "=" * 60)
     print("STEP 3: Two Dominant Path Extraction")
     print("=" * 60)
-    # Use unscaled data for peak detection (need real amplitudes)
+    # Use preprocessed (CIR normalized by RXPACC) but unscaled data for peak detection
     path1_idx, path1_amp, path2_idx, path2_amp = extract_two_paths(df)
 
     # ── Step 4: Feature Engineering ──────────────────────────────────
@@ -171,9 +174,16 @@ def main():
     delta_auc_dl = dl_result_aug['auc'] - dl_result['auc']
     print(f"  Delta: Accuracy={delta_acc_dl:+.4f}, AUC={delta_auc_dl:+.4f}")
 
-    # ── Step 5d: Ensemble Stacking ──────────────────────────────────
+    # ── Step 5d: Unsupervised Clustering Baseline ──────────────────
     print("\n" + "=" * 60)
-    print("STEP 5d: Ensemble Stacking")
+    print("STEP 5d: Unsupervised Clustering Baseline")
+    print("=" * 60)
+    cluster_results = run_kmeans_analysis(
+        X_train_cls, y_train_cls, X_test_cls, y_test_cls)
+
+    # ── Step 5e: Ensemble Stacking ──────────────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 5e: Ensemble Stacking")
     print("=" * 60)
     ensemble_results = build_ensemble(
         cls_results, X_train_cls, y_train_cls, X_test_cls, y_test_cls,
@@ -280,8 +290,9 @@ def main():
           f"(LOS={int((y_test_fair == 0).sum())}, NLOS={int((y_test_fair == 1).sum())})")
 
     from sklearn.metrics import accuracy_score as acc_fn, roc_curve as roc_fn, auc as auc_fn
+    # Evaluate individual ML models on fair test set (skip ensembles — handled separately below)
     ml_model_names = ['Logistic Regression', 'Random Forest', 'Gradient Boosted Trees',
-                      'XGBoost', 'Ensemble (Average)', 'Ensemble (Stacked)']
+                      'XGBoost']
     for name in ml_model_names:
         if name not in cls_results or 'model' not in cls_results[name]:
             continue
@@ -319,28 +330,32 @@ def main():
         print(
             f"  {'DL+ML Ensemble Fusion':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
 
-    # Ensemble models don't have a .model with predict_proba — evaluate via re-averaging
-    for ens_name in ['Ensemble (Average)', 'Ensemble (Stacked)']:
-        if ens_name in cls_results and 'model' not in cls_results[ens_name]:
-            # Re-compute ensemble on fair test set
-            base_names = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']
-                          if n in cls_results and 'model' in cls_results[n]]
-            if len(base_names) >= 2:
-                fair_probs = np.column_stack([
-                    cls_results[n]['model'].predict_proba(X_test_fair)[:, 1]
-                    for n in base_names
-                ])
-                if ens_name == 'Ensemble (Average)':
-                    ens_prob = fair_probs.mean(axis=1)
+    # Ensemble models: re-evaluate on fair test set
+    base_names_fair = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']
+                       if n in cls_results and 'model' in cls_results[n]]
+    if len(base_names_fair) >= 2:
+        fair_probs = np.column_stack([
+            cls_results[n]['model'].predict_proba(X_test_fair)[:, 1]
+            for n in base_names_fair
+        ])
+        for ens_name in ['Ensemble (Average)', 'Ensemble (Stacked)']:
+            if ens_name not in cls_results:
+                continue
+            if ens_name == 'Ensemble (Average)':
+                ens_prob = fair_probs.mean(axis=1)
+            else:
+                # Use the stored meta-learner for proper stacked prediction
+                meta_model = cls_results[ens_name].get('model')
+                if meta_model is not None:
+                    ens_prob = meta_model.predict_proba(fair_probs)[:, 1]
                 else:
-                    # Would need the meta-learner; approximate with average
                     ens_prob = fair_probs.mean(axis=1)
-                ens_pred = (ens_prob >= 0.5).astype(int)
-                acc_ens = acc_fn(y_test_fair, ens_pred)
-                fpr_e, tpr_e, _ = roc_fn(y_test_fair, ens_prob)
-                auc_ens = auc_fn(fpr_e, tpr_e)
-                print(
-                    f"  {ens_name:30s}: Accuracy={acc_ens:.4f}, AUC={auc_ens:.4f} (fair)")
+            ens_pred = (ens_prob >= 0.5).astype(int)
+            acc_ens = acc_fn(y_test_fair, ens_pred)
+            fpr_e, tpr_e, _ = roc_fn(y_test_fair, ens_prob)
+            auc_ens = auc_fn(fpr_e, tpr_e)
+            print(
+                f"  {ens_name:30s}: Accuracy={acc_ens:.4f}, AUC={auc_ens:.4f} (fair)")
 
     # ── Summary ──────────────────────────────────────────────────────
     print("\n" + "=" * 60)

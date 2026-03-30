@@ -229,16 +229,22 @@ def plot_confusion_matrices(cls_results, y_test):
         y_test (np.ndarray): Test labels (used for axis labels only).
     """
     n_models = len(cls_results)
-    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models, 4))
-    if n_models == 1:
-        axes = [axes]
-    for ax, (name, res) in zip(axes, cls_results.items()):
+    # Use a 2-row grid when there are more than 4 models to avoid an
+    # impractically wide figure (e.g., 8 models × 5in = 40in).
+    n_cols = min(n_models, 4)
+    n_rows = (n_models + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    axes = np.array(axes).ravel()  # Flatten for uniform indexing
+    for i, (name, res) in enumerate(cls_results.items()):
         # Use pre-computed confusion matrix from each model's results
         cm = res['confusion_matrix']
         ConfusionMatrixDisplay(cm, display_labels=['LOS', 'NLOS']).plot(
-            cmap='Blues', ax=ax,
+            cmap='Blues', ax=axes[i],
         )
-        ax.set_title(name)
+        axes[i].set_title(name, fontsize=9)
+    # Hide any unused subplot slots
+    for j in range(n_models, len(axes)):
+        axes[j].set_visible(False)
     fig.suptitle('Confusion Matrices')
     _savefig('07_confusion_matrices.png')
 
@@ -285,7 +291,7 @@ def plot_model_comparison(cls_results):
     ax.bar(x - width / 2, accs, width, label='Accuracy', color='steelblue')
     ax.bar(x + width / 2, aucs, width, label='AUC', color='coral')
     ax.set_xticks(x)
-    ax.set_xticklabels(names, fontsize=9)
+    ax.set_xticklabels(names, fontsize=8, rotation=30, ha='right')
     ax.set_ylim(0.5, 1.05)
     ax.set_ylabel('Score')
     ax.set_title('Model Comparison')
@@ -522,9 +528,12 @@ def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
         n (int): Number of annotated examples to show (default 3).
     """
     cir_cols = [c for c in df.columns if c.startswith('CIR') and c != 'CIR_PWR']
-    # Select the best classifier by accuracy for annotation
-    best_cls = max(cls_results, key=lambda n: cls_results[n]['accuracy'])
-    model = cls_results[best_cls]['model']
+    # Select the best sklearn classifier by accuracy for prediction annotation.
+    # Exclude DL models (CNN+Transformer) since they require different input format.
+    sklearn_models = {k: v for k, v in cls_results.items()
+                      if 'model' in v and hasattr(v['model'], 'predict')}
+    best_cls = max(sklearn_models, key=lambda n: sklearn_models[n]['accuracy'])
+    model = sklearn_models[best_cls]['model']
 
     fig, axes = plt.subplots(1, n, figsize=(5 * n, 4))
     np.random.seed(42)  # Reproducible random sample selection
@@ -533,6 +542,16 @@ def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
     for ax, i in zip(axes, sample_idxs):
         cir = df.iloc[i][cir_cols].values.astype(float)
         true_label = 'NLOS' if df.iloc[i]['NLOS'] == 1 else 'LOS'
+
+        # Get predicted label from the best ML classifier (Path 1 features)
+        pred_label = true_label  # Fallback
+        if i < len(features_df) // 2:
+            try:
+                feats = features_df.iloc[i].values.reshape(1, -1)
+                pred = model.predict(feats)[0]
+                pred_label = 'NLOS' if pred == 1 else 'LOS'
+            except Exception:
+                pass  # Keep fallback if prediction fails
 
         ax.plot(cir, linewidth=0.5, color='gray')
         # Annotate Path 1 (blue downward triangle)
@@ -543,7 +562,7 @@ def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
 
         # Zoom to region around detected paths
         ax.set_xlim(max(0, path1_idx[i] - 50), min(len(cir), path1_idx[i] + 100))
-        ax.set_title(f'Sample {i} (True: {true_label})')
+        ax.set_title(f'Sample {i}\nTrue: {true_label}, Pred: {pred_label}', fontsize=9)
         ax.legend(fontsize=7)
 
     fig.suptitle(f'Annotated CIR Examples ({best_cls})')

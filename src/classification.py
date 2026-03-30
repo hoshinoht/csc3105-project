@@ -56,13 +56,13 @@ def train_classifiers(X_train, y_train, X_test, y_test):
 
     # ── 2. Random Forest with GridSearchCV ───────────────────────────
     print("\n--- Random Forest (GridSearchCV) ---")
-    rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=1)
+    rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
     param_grid = {
         'n_estimators': [100, 300, 500],
         'max_depth': [10, 20, None],
         'min_samples_leaf': [1, 3],
     }
-    gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=1, verbose=1)
+    gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
     gs.fit(X_train, y_train)
     print(f"  Best params: {gs.best_params_}")
     results['Random Forest'] = _evaluate(gs.best_estimator_, X_test, y_test)
@@ -83,7 +83,7 @@ def train_classifiers(X_train, y_train, X_test, y_test):
         'max_iter': [200, 500],
         'max_depth': [4, 6, 8],
     }
-    gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=1, verbose=1)
+    gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
     gs_gbt.fit(X_train, y_train, sample_weight=sample_weight)
     print(f"  Best params: {gs_gbt.best_params_}")
     results['Gradient Boosted Trees'] = _evaluate(gs_gbt.best_estimator_, X_test, y_test)
@@ -95,7 +95,7 @@ def train_classifiers(X_train, y_train, X_test, y_test):
         n_pos = int((y_train == 1).sum())
         scale_pos = n_neg / max(n_pos, 1)
         xgb = XGBClassifier(
-            eval_metric='logloss', random_state=42, n_jobs=1,
+            eval_metric='logloss', random_state=42, n_jobs=-1,
             scale_pos_weight=scale_pos,
         )
         param_grid_xgb = {
@@ -105,7 +105,7 @@ def train_classifiers(X_train, y_train, X_test, y_test):
             'subsample': [0.8, 1.0],
         }
         gs_xgb = GridSearchCV(xgb, param_grid_xgb, scoring='f1_weighted',
-                               cv=cv, n_jobs=1, verbose=1)
+                               cv=cv, n_jobs=-1, verbose=1)
         gs_xgb.fit(X_train, y_train)
         print(f"  Best params: {gs_xgb.best_params_}")
         results['XGBoost'] = _evaluate(gs_xgb.best_estimator_, X_test, y_test)

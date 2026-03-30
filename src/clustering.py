@@ -101,7 +101,7 @@ def run_kmeans_analysis(X_train, y_train, X_test, y_test, random_state=42):
     n_sil = min(10000, len(X_train))
     rng = np.random.RandomState(random_state)
     sil_idx = rng.choice(len(X_train), n_sil, replace=False)
-    sil_train = silhouette_score(X_train[sil_idx], kmeans.labels_[sil_idx])
+    sil_train = silhouette_score(X_train[sil_idx], train_clusters[sil_idx])
     sil_test = silhouette_score(X_test, kmeans.predict(X_test))
 
     # Adjusted Rand Index: measures cluster-label agreement regardless of
