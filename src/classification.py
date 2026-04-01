@@ -23,6 +23,7 @@ from sklearn.ensemble import (
     RandomForestClassifier, HistGradientBoostingClassifier,
 )
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.svm import SVC
 from sklearn.metrics import (
     accuracy_score, classification_report, confusion_matrix, roc_curve, auc,
 )
@@ -54,12 +55,31 @@ def train_classifiers(X_train, y_train, X_test, y_test):
     lr.fit(X_train, y_train)
     results['Logistic Regression'] = _evaluate(lr, X_test, y_test)
 
-    # ── 2. Random Forest with GridSearchCV ───────────────────────────
+    # ── 2. SVM with RBF Kernel and GridSearchCV ──────────────────────
+    # SVM is O(n²)-O(n³), so subsample training data for tractability.
+    print("\n--- SVM (RBF) (GridSearchCV, subsampled) ---")
+    svm_max_samples = min(15000, len(X_train))
+    rng = np.random.RandomState(42)
+    svm_idx = rng.choice(len(X_train), svm_max_samples, replace=False)
+    X_train_svm, y_train_svm = X_train[svm_idx], y_train[svm_idx]
+    print(f"  Subsampled to {svm_max_samples} training samples for SVM")
+
+    svm = SVC(kernel='rbf', probability=True, class_weight='balanced', random_state=42)
+    param_grid_svm = {
+        'C': [0.1, 1, 10],
+        'gamma': ['scale', 'auto'],
+    }
+    gs_svm = GridSearchCV(svm, param_grid_svm, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
+    gs_svm.fit(X_train_svm, y_train_svm)
+    print(f"  Best params: {gs_svm.best_params_}")
+    results['SVM (RBF)'] = _evaluate(gs_svm.best_estimator_, X_test, y_test)
+
+    # ── 3. Random Forest with GridSearchCV ───────────────────────────
     print("\n--- Random Forest (GridSearchCV) ---")
     rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
     param_grid = {
-        'n_estimators': [100, 300, 500],
-        'max_depth': [10, 20, None],
+        'n_estimators': [300, 500],
+        'max_depth': [20, None],
         'min_samples_leaf': [1, 3],
     }
     gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
@@ -79,9 +99,9 @@ def train_classifiers(X_train, y_train, X_test, y_test):
 
     gbt = HistGradientBoostingClassifier(random_state=42)
     param_grid_gbt = {
-        'learning_rate': [0.01, 0.05, 0.1],
+        'learning_rate': [0.05, 0.1],
         'max_iter': [200, 500],
-        'max_depth': [4, 6, 8],
+        'max_depth': [4, 6],
     }
     gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
     gs_gbt.fit(X_train, y_train, sample_weight=sample_weight)
@@ -95,8 +115,9 @@ def train_classifiers(X_train, y_train, X_test, y_test):
         n_pos = int((y_train == 1).sum())
         scale_pos = n_neg / max(n_pos, 1)
         xgb = XGBClassifier(
-            eval_metric='logloss', random_state=42, n_jobs=-1,
+            eval_metric='logloss', random_state=42,
             scale_pos_weight=scale_pos,
+            device='cuda',
         )
         param_grid_xgb = {
             'n_estimators': [200, 500],
@@ -105,7 +126,7 @@ def train_classifiers(X_train, y_train, X_test, y_test):
             'subsample': [0.8, 1.0],
         }
         gs_xgb = GridSearchCV(xgb, param_grid_xgb, scoring='f1_weighted',
-                               cv=cv, n_jobs=-1, verbose=1)
+                               cv=cv, n_jobs=1, verbose=1)
         gs_xgb.fit(X_train, y_train)
         print(f"  Best params: {gs_xgb.best_params_}")
         results['XGBoost'] = _evaluate(gs_xgb.best_estimator_, X_test, y_test)

@@ -42,14 +42,18 @@ def load_dataset(dataset_dir=None):
     frames = []
 
     # Iterate through sorted CSV files for deterministic loading order
-    for f in sorted(os.listdir(dataset_dir)):
-        if f.endswith('.csv'):
-            frames.append(pd.read_csv(os.path.join(dataset_dir, f)))
+    csv_files = sorted(f for f in os.listdir(dataset_dir) if f.endswith('.csv'))
+    for i, f in enumerate(csv_files):
+        part = pd.read_csv(os.path.join(dataset_dir, f))
+        part['ENV_ID'] = i
+        frames.append(part)
 
-    # Concatenate all environment CSVs into one DataFrame, reset row indices
-    df = pd.concat(frames, ignore_index=True)
+    # Concatenate all environment CSVs into one DataFrame, reset row indices.
+    # copy() defragments the DataFrame (avoids PerformanceWarning from insert).
+    df = pd.concat(frames, ignore_index=True).copy()
 
     # Print summary statistics for verification
     print(f"Loaded dataset: {df.shape[0]} samples, {df.shape[1]} columns")
     print(f"  LOS: {(df['NLOS'] == 0).sum()}, NLOS: {(df['NLOS'] == 1).sum()}")
+    print(f"  Environments: {df['ENV_ID'].nunique()} (ENV_ID 0-{df['ENV_ID'].max()})")
     return df

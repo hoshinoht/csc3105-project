@@ -25,7 +25,9 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for saving to file
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import ConfusionMatrixDisplay
+from sklearn.metrics import ConfusionMatrixDisplay, precision_recall_curve, average_precision_score
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 
 
 # Output directory for all generated plot images
@@ -230,7 +232,7 @@ def plot_confusion_matrices(cls_results, y_test):
     """
     n_models = len(cls_results)
     # Use a 2-row grid when there are more than 4 models to avoid an
-    # impractically wide figure (e.g., 8 models × 5in = 40in).
+    # impractically wide figure (e.g., 8 models x 5in = 40in).
     n_cols = min(n_models, 4)
     n_rows = (n_models + n_cols - 1) // n_cols
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
@@ -271,6 +273,39 @@ def plot_roc_curves(cls_results):
     _savefig('08_roc_curves.png')
 
 
+def plot_pr_curves(cls_results, y_test):
+    """
+    Precision-Recall curves for all classifiers overlaid on the same axes.
+
+    The PR curve plots Precision vs Recall at varying classification thresholds.
+    AP (Average Precision) summarises the area under the PR curve -- higher AP
+    indicates better precision-recall trade-off, especially for imbalanced data.
+
+    A horizontal dashed line shows the "no skill" baseline, equal to the
+    proportion of positive samples (NLOS) in the test set.
+
+    Parameters:
+        cls_results (dict): Classification results containing 'y_prob'.
+        y_test (np.ndarray): True test labels (0=LOS, 1=NLOS).
+    """
+    fig, ax = plt.subplots(figsize=(7, 6))
+    for name, res in cls_results.items():
+        # Skip models with different test set size (e.g., DL on original 42K vs ML on expanded 84K)
+        if len(res['y_prob']) != len(y_test):
+            continue
+        precision, recall, _ = precision_recall_curve(y_test, res['y_prob'])
+        ap = average_precision_score(y_test, res['y_prob'])
+        ax.plot(recall, precision, label=f"{name} (AP={ap:.3f})")
+    # No-skill baseline: proportion of positive class
+    no_skill = y_test.sum() / len(y_test)
+    ax.axhline(no_skill, color='k', linestyle='--', alpha=0.3, label=f'No Skill ({no_skill:.2f})')
+    ax.set_xlabel('Recall')
+    ax.set_ylabel('Precision')
+    ax.set_title('Precision-Recall Curves')
+    ax.legend()
+    _savefig('15_pr_curves.png')
+
+
 def plot_model_comparison(cls_results):
     """
     Grouped bar chart comparing accuracy and AUC across all models.
@@ -297,6 +332,90 @@ def plot_model_comparison(cls_results):
     ax.set_title('Model Comparison')
     ax.legend()
     _savefig('09_model_comparison.png')
+
+
+def plot_per_environment_heatmap(cls_results, X_test, y_test, env_ids_test):
+    """
+    Heatmap of per-environment classification accuracy for each sklearn model.
+
+    Computes accuracy for each (model, environment) pair and displays it as
+    a seaborn heatmap, revealing whether certain indoor environments are
+    harder to classify than others.
+
+    Parameters:
+        cls_results (dict): Classification results from all models.
+        X_test (np.ndarray): Test feature matrix.
+        y_test (np.ndarray): True test labels.
+        env_ids_test (np.ndarray): Environment ID (0-6) for each test sample.
+    """
+    env_names = ['Office 1', 'Office 2', 'Small Apartment', 'Small Workshop',
+                 'Kitchen+Living', 'Bedroom', 'Boiler Room']
+
+    # Collect sklearn models that were trained on the original feature space.
+    # Skip ensemble meta-learners and DL models (different input dimensions).
+    skip_names = {'Ensemble (Average)', 'Ensemble (Stacked)', 'CNN+Transformer'}
+    sklearn_models = {name: res for name, res in cls_results.items()
+                      if 'model' in res and hasattr(res['model'], 'predict')
+                      and name not in skip_names}
+
+    if not sklearn_models:
+        print("  Skipped: no sklearn models with .predict() found")
+        return
+
+    model_names = list(sklearn_models.keys())
+    acc_matrix = np.zeros((len(env_names), len(model_names)))
+
+    for j, name in enumerate(model_names):
+        model = sklearn_models[name]['model']
+        y_pred = model.predict(X_test)
+        for i in range(len(env_names)):
+            mask = env_ids_test == i
+            if mask.sum() > 0:
+                acc_matrix[i, j] = (y_pred[mask] == y_test[mask]).mean()
+
+    fig, ax = plt.subplots(figsize=(max(8, 2 * len(model_names)), 6))
+    sns.heatmap(acc_matrix, annot=True, fmt='.3f', cmap='YlGnBu',
+                xticklabels=model_names, yticklabels=env_names,
+                ax=ax, vmin=0.5, vmax=1.0)
+    ax.set_xlabel('Model')
+    ax.set_ylabel('Environment')
+    ax.set_title('Per-Environment Classification Accuracy')
+    plt.xticks(rotation=30, ha='right', fontsize=9)
+    _savefig('16_per_environment_heatmap.png')
+
+
+def plot_regression_comparison(reg_results_p1, reg_results_p2):
+    """
+    Grouped bar chart comparing regression metrics across all models and paths.
+
+    Three subplots side by side showing RMSE, MAE, and R² for each regressor,
+    with Path 1 (steelblue) and Path 2 (coral) bars grouped per model.
+
+    Parameters:
+        reg_results_p1 (dict): Regression results for Path 1.
+        reg_results_p2 (dict): Regression results for Path 2.
+    """
+    names = list(reg_results_p1.keys())
+    metrics = ['rmse', 'mae', 'r2']
+    titles = ['RMSE (m)', 'MAE (m)', 'R²']
+
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    x = np.arange(len(names))
+    width = 0.35
+
+    for ax, metric, title in zip(axes, metrics, titles):
+        vals_p1 = [reg_results_p1[n][metric] for n in names]
+        vals_p2 = [reg_results_p2[n][metric] for n in names]
+        ax.bar(x - width / 2, vals_p1, width, label='Path 1', color='steelblue')
+        ax.bar(x + width / 2, vals_p2, width, label='Path 2', color='coral')
+        ax.set_xticks(x)
+        ax.set_xticklabels(names, fontsize=8, rotation=30, ha='right')
+        ax.set_ylabel(title)
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+
+    fig.suptitle('Regression Model Comparison')
+    _savefig('17_regression_comparison.png')
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -511,6 +630,133 @@ def plot_clustering(cluster_results, y_test):
     _savefig('14_clustering.png')
 
 
+def plot_elbow_silhouette(elbow_results):
+    """
+    Elbow and Silhouette plots for optimal cluster count selection.
+
+    Left panel shows inertia (within-cluster sum of squares) vs k -- the
+    "elbow" point indicates diminishing returns from adding more clusters.
+    Right panel shows silhouette score vs k -- higher is better.
+
+    Both panels highlight k=2 (the chosen value for LOS/NLOS clustering)
+    with a vertical dashed red line.
+
+    Parameters:
+        elbow_results (dict): Output from run_elbow_silhouette_analysis().
+    """
+    k_values = elbow_results['k_values']
+    inertias = elbow_results['inertias']
+    silhouettes = elbow_results['silhouettes']
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left panel: Elbow curve (Inertia vs k)
+    axes[0].plot(k_values, inertias, 'o-', color='steelblue', markersize=6)
+    axes[0].axvline(2, color='red', linestyle='--', alpha=0.7)
+    axes[0].annotate('k=2 (chosen)', xy=(2, inertias[0]),
+                     xytext=(3.5, inertias[0]),
+                     arrowprops=dict(arrowstyle='->', color='red'),
+                     color='red', fontsize=9)
+    axes[0].set_xlabel('k')
+    axes[0].set_ylabel('Inertia')
+    axes[0].set_title('Elbow Method (Inertia)')
+
+    # Right panel: Silhouette score vs k
+    axes[1].plot(k_values, silhouettes, 'o-', color='steelblue', markersize=6)
+    axes[1].axvline(2, color='red', linestyle='--', alpha=0.7)
+    axes[1].annotate('k=2 (chosen)', xy=(2, silhouettes[0]),
+                     xytext=(3.5, silhouettes[0]),
+                     arrowprops=dict(arrowstyle='->', color='red'),
+                     color='red', fontsize=9)
+    axes[1].set_xlabel('k')
+    axes[1].set_ylabel('Silhouette Score')
+    axes[1].set_title('Silhouette Score vs k')
+
+    fig.suptitle('Optimal Cluster Count Analysis')
+    _savefig('19_elbow_silhouette.png')
+
+
+def plot_tsne_embedding(X_test, y_test, cluster_labels, random_state=42):
+    """
+    t-SNE 2D embedding of test features compared with PCA projection.
+
+    Three panels side by side:
+      - Left: t-SNE coloured by true LOS/NLOS labels.
+      - Middle: t-SNE coloured by K-Means cluster assignments.
+      - Right: PCA 2D projection coloured by true labels for comparison.
+
+    Since t-SNE is computationally expensive on large datasets, the input
+    is subsampled to a maximum of 10,000 samples for tractability.
+
+    Parameters:
+        X_test (np.ndarray): Test feature matrix (n_samples, n_features).
+        y_test (np.ndarray): True test labels (0=LOS, 1=NLOS).
+        cluster_labels (np.ndarray): K-Means cluster assignments for test set.
+        random_state (int): Random seed for reproducibility (default 42).
+    """
+    # Subsample to max 10,000 samples for t-SNE tractability
+    max_samples = 10_000
+    n = len(X_test)
+    if n > max_samples:
+        rng = np.random.RandomState(random_state)
+        idx = rng.choice(n, max_samples, replace=False)
+        X_sub = X_test[idx]
+        y_sub = y_test[idx]
+        cl_sub = cluster_labels[idx]
+    else:
+        X_sub = X_test
+        y_sub = y_test
+        cl_sub = cluster_labels
+
+    # t-SNE reduction to 2D
+    print("  Running t-SNE (this may take a minute)...")
+    tsne = TSNE(n_components=2, perplexity=30, max_iter=1000,
+                random_state=random_state, learning_rate='auto', init='pca')
+    X_tsne = tsne.fit_transform(X_sub)
+
+    # PCA reduction to 2D for comparison
+    pca = PCA(n_components=2, random_state=random_state)
+    X_pca = pca.fit_transform(X_sub)
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    # Left panel: t-SNE coloured by true labels
+    for label, name, color in [(0, 'LOS (true)', 'steelblue'),
+                                (1, 'NLOS (true)', 'coral')]:
+        mask = y_sub == label
+        axes[0].scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[0].set_title('t-SNE: True Labels')
+    axes[0].set_xlabel('t-SNE 1')
+    axes[0].set_ylabel('t-SNE 2')
+    axes[0].legend(markerscale=4, fontsize=9)
+
+    # Middle panel: t-SNE coloured by K-Means cluster assignments
+    for label, name, color in [(0, 'Cluster 0 (LOS)', 'steelblue'),
+                                (1, 'Cluster 1 (NLOS)', 'coral')]:
+        mask = cl_sub == label
+        axes[1].scatter(X_tsne[mask, 0], X_tsne[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[1].set_title('t-SNE: K-Means Clusters')
+    axes[1].set_xlabel('t-SNE 1')
+    axes[1].set_ylabel('t-SNE 2')
+    axes[1].legend(markerscale=4, fontsize=9)
+
+    # Right panel: PCA coloured by true labels for comparison
+    for label, name, color in [(0, 'LOS (true)', 'steelblue'),
+                                (1, 'NLOS (true)', 'coral')]:
+        mask = y_sub == label
+        axes[2].scatter(X_pca[mask, 0], X_pca[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[2].set_title('PCA: True Labels (comparison)')
+    axes[2].set_xlabel('PC1')
+    axes[2].set_ylabel('PC2')
+    axes[2].legend(markerscale=4, fontsize=9)
+
+    fig.suptitle('t-SNE vs PCA: Feature Space Embedding')
+    _savefig('18_tsne_embedding.png')
+
+
 def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
                        cls_results, features_df, n=3):
     """
@@ -567,3 +813,195 @@ def plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
 
     fig.suptitle(f'Annotated CIR Examples ({best_cls})')
     _savefig('12_annotated_cir.png')
+
+
+def plot_shap_summary(cls_results, X_test, feature_names):
+    """
+    SHAP summary plots for tree-based classifier feature importance.
+
+    Generates two plots using SHapley Additive exPlanations:
+      - Beeswarm/dot plot: SHAP values per sample for each feature.
+      - Bar plot: Mean absolute SHAP values (average feature impact).
+
+    Parameters:
+        cls_results (dict): Classification results from all models.
+        X_test (np.ndarray): Test feature matrix.
+        feature_names (list): Feature names for axis labels.
+    """
+    try:
+        import shap
+    except ImportError:
+        print("  SHAP not installed; skipping SHAP summary plots")
+        return
+
+    # Select the best tree-based model with feature_importances_
+    best_model = None
+    best_name = None
+    for name in ['XGBoost', 'Random Forest', 'Gradient Boosted Trees']:
+        if name in cls_results and 'model' in cls_results[name]:
+            model = cls_results[name]['model']
+            if hasattr(model, 'feature_importances_'):
+                best_model = model
+                best_name = name
+                break
+
+    if best_model is None:
+        print("  No tree-based model found for SHAP analysis")
+        return
+
+    print(f"  Using {best_name} for SHAP analysis...")
+
+    # Subsample for speed (max 1000 samples)
+    n_samples = min(1000, len(X_test))
+    np.random.seed(42)
+    idx = np.random.choice(len(X_test), n_samples, replace=False)
+    X_sub = X_test[idx]
+
+    explainer = shap.TreeExplainer(best_model)
+    shap_values = explainer.shap_values(X_sub)
+
+    # For binary classification, use class 1 (NLOS) SHAP values
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]
+
+    # Beeswarm plot
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, X_sub, feature_names=feature_names,
+                      plot_type='dot', show=False)
+    _savefig('20_shap_beeswarm.png')
+
+    # Bar plot (mean absolute SHAP)
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, X_sub, feature_names=feature_names,
+                      plot_type='bar', show=False)
+    _savefig('21_shap_bar.png')
+
+
+def plot_rfe_curve(rfe_results):
+    """
+    Recursive Feature Elimination accuracy curve.
+
+    Plots cross-validation accuracy as a function of the number of features,
+    highlighting the optimal feature count with a vertical red line.
+
+    Parameters:
+        rfe_results (dict): Results with keys 'n_features', 'scores'.
+    """
+    n_features = rfe_results['n_features']
+    scores = rfe_results['scores']
+
+    optimal_idx = np.argmax(scores)
+    optimal_n = n_features[optimal_idx]
+    optimal_score = scores[optimal_idx]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(n_features, scores, marker='o', linestyle='-', linewidth=2,
+            markersize=6, color='steelblue', label='CV Accuracy')
+    ax.axvline(optimal_n, color='red', linestyle='--', linewidth=2, alpha=0.7)
+    ax.plot(optimal_n, optimal_score, marker='*', markersize=15, color='red')
+    ax.annotate(f'Optimal: {optimal_n} features\n(Accuracy={optimal_score:.4f})',
+                xy=(optimal_n, optimal_score),
+                xytext=(optimal_n + 1, optimal_score - 0.02),
+                fontsize=9, ha='left',
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.3),
+                arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
+    ax.set_xlabel('Number of Features')
+    ax.set_ylabel('Cross-Validation Accuracy')
+    ax.set_title('Recursive Feature Elimination')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    _savefig('22_rfe_curve.png')
+
+
+def plot_dbscan(dbscan_results, y_test):
+    """
+    DBSCAN clustering results: PCA scatter with noise points highlighted.
+
+    Left panel: clusters coloured by DBSCAN assignment (noise in gray).
+    Right panel: true LOS/NLOS labels for comparison.
+
+    Parameters:
+        dbscan_results (dict): Output from run_dbscan_analysis().
+        y_test (np.ndarray): True test labels (0=LOS, 1=NLOS).
+    """
+    X_2d = dbscan_results['X_test_2d']
+    clusters = dbscan_results['test_labels']
+    n_clusters = dbscan_results['n_clusters']
+    n_noise = dbscan_results['n_noise']
+    accuracy = dbscan_results['accuracy']
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left: DBSCAN clusters
+    color_map = {-1: 'gray', 0: 'steelblue', 1: 'coral'}
+    extra = ['green', 'purple', 'orange', 'brown', 'pink']
+    for i, cid in enumerate(sorted(set(clusters))):
+        if cid not in color_map:
+            color_map[cid] = extra[i % len(extra)]
+
+    for cid in sorted(set(clusters)):
+        mask = clusters == cid
+        lbl = f'Noise ({mask.sum()})' if cid == -1 else f'Cluster {cid} ({mask.sum()})'
+        mkr = 'x' if cid == -1 else 'o'
+        sz = 20 if cid == -1 else 5
+        axes[0].scatter(X_2d[mask, 0], X_2d[mask, 1], c=color_map[cid],
+                        alpha=0.15, s=sz, label=lbl, marker=mkr)
+    axes[0].set_title(f'DBSCAN (n={n_clusters}, noise={n_noise}, acc={accuracy:.3f})')
+    axes[0].set_xlabel('PC1')
+    axes[0].set_ylabel('PC2')
+    axes[0].legend(markerscale=4, fontsize=9)
+
+    # Right: true labels
+    for label, name, color in [(0, 'LOS (true)', 'steelblue'),
+                                (1, 'NLOS (true)', 'coral')]:
+        mask = y_test == label
+        axes[1].scatter(X_2d[mask, 0], X_2d[mask, 1], c=color, alpha=0.15,
+                        s=5, label=name)
+    axes[1].set_title('True Labels (PCA projection)')
+    axes[1].set_xlabel('PC1')
+    axes[1].set_ylabel('PC2')
+    axes[1].legend(markerscale=4, fontsize=9)
+
+    fig.suptitle('DBSCAN Clustering vs True Labels')
+    _savefig('23_dbscan.png')
+
+
+def plot_augmentation_impact(original_metrics, augmented_metrics):
+    """
+    Bar chart comparing performance before and after synthetic data augmentation.
+
+    Shows accuracy and AUC for Random Forest (SMOTE) and CNN+Transformer
+    (CIR augmentation) with delta annotations.
+
+    Parameters:
+        original_metrics (dict): Keys: 'rf_acc', 'rf_auc', 'dl_acc', 'dl_auc'.
+        augmented_metrics (dict): Same keys with augmented results.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    models = ['Random Forest\n(SMOTE)', 'CNN+Transformer\n(CIR Aug)']
+    x = np.arange(len(models))
+    width = 0.35
+
+    for ax, metric_key, title in [
+        (axes[0], 'acc', 'Accuracy'),
+        (axes[1], 'auc', 'AUC'),
+    ]:
+        orig = [original_metrics[f'rf_{metric_key}'], original_metrics[f'dl_{metric_key}']]
+        aug = [augmented_metrics[f'rf_{metric_key}'], augmented_metrics[f'dl_{metric_key}']]
+        ax.bar(x - width / 2, orig, width, label='Original', color='steelblue')
+        ax.bar(x + width / 2, aug, width, label='Augmented', color='coral')
+        for i, (o, a) in enumerate(zip(orig, aug)):
+            delta = a - o
+            clr = 'darkgreen' if delta >= 0 else 'darkred'
+            ax.text(i + width / 2, a + 0.005, f'{delta:+.4f}', ha='center',
+                    fontsize=8, color=clr, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, fontsize=9)
+        ax.set_ylim(0.9, 1.0)
+        ax.set_ylabel(title)
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+        ax.grid(axis='y', alpha=0.3)
+
+    fig.suptitle('Synthetic Data Augmentation Impact')
+    _savefig('24_augmentation_impact.png')

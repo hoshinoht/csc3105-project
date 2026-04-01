@@ -22,7 +22,7 @@ from sklearn.preprocessing import StandardScaler
 
 
 # Columns that are identical across all 42,000 samples — no predictive value
-CONSTANT_COLS = ['CH', 'BITRATE', 'PRFR']
+CONSTANT_COLS = ['CH', 'BITRATE', 'PRFR', 'ENV_ID']
 
 # The 11 scalar features retained after dropping constants.
 # These include hardware diagnostics (FP_AMP1-3, RXPACC, FRAME_LEN, PREAM_LEN),

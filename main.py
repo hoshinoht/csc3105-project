@@ -20,7 +20,7 @@ Libraries: numpy, and all project modules under src/
 """
 
 from src import visualization as viz
-from src.clustering import run_kmeans_analysis
+from src.clustering import run_kmeans_analysis, run_elbow_silhouette_analysis, run_dbscan_analysis
 from src.ensemble import build_ensemble
 from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
 from src.dl_training import train_dl_classifier
@@ -46,6 +46,7 @@ def main():
     print("STEP 1: Loading Dataset")
     print("=" * 60)
     df_raw = load_dataset()
+    env_ids = df_raw['ENV_ID'].values  # Track environment source (0-6) before preprocessing drops it
 
     # ── Step 2: Preprocessing ────────────────────────────────────────
     # Drop constant columns, normalize CIR by RXPACC, StandardScale
@@ -81,6 +82,10 @@ def main():
     exp_train_idx = np.concatenate([train_idx, train_idx + n_orig])
     exp_test_idx = np.concatenate([test_idx, test_idx + n_orig])
 
+    # Expand environment IDs to match two-path dataset
+    exp_env_ids = np.concatenate([env_ids, env_ids])
+    env_ids_test = exp_env_ids[exp_test_idx]
+
     # Prepare ML classification data (expanded 84K dataset)
     X_train_cls = features_df.iloc[exp_train_idx].values
     y_train_cls = labels_cls[exp_train_idx]
@@ -97,6 +102,26 @@ def main():
     print("=" * 60)
     cls_results = train_classifiers(
         X_train_cls, y_train_cls, X_test_cls, y_test_cls)
+
+    # ── Step 5a: Recursive Feature Elimination ──────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 5a: Recursive Feature Elimination (RFE)")
+    print("=" * 60)
+    from sklearn.feature_selection import RFECV
+    best_rf = cls_results['Random Forest']['model']
+    rfecv = RFECV(
+        estimator=best_rf, step=1, cv=3, scoring='accuracy',
+        min_features_to_select=1, n_jobs=-1,
+    )
+    rfecv.fit(X_train_cls, y_train_cls)
+    rfe_results = {
+        'n_features': np.arange(1, len(rfecv.ranking_) + 1),
+        'scores': rfecv.cv_results_['mean_test_score'],
+    }
+    print(f"  Optimal number of features: {rfecv.n_features_}")
+    ranked = sorted(zip(feature_names, rfecv.ranking_), key=lambda x: x[1])
+    for fname, rank in ranked[:10]:
+        print(f"    {rank:2d}. {fname}")
 
     # ── Step 5b: Deep Learning on Raw CIR ────────────────────────────
     # Train CNN+Transformer directly on the raw 1016-sample CIR waveforms
@@ -180,6 +205,8 @@ def main():
     print("=" * 60)
     cluster_results = run_kmeans_analysis(
         X_train_cls, y_train_cls, X_test_cls, y_test_cls)
+    elbow_results = run_elbow_silhouette_analysis(X_train_cls)
+    dbscan_results = run_dbscan_analysis(X_train_cls, X_test_cls, y_test_cls)
 
     # ── Step 5e: Ensemble Stacking ──────────────────────────────────
     print("\n" + "=" * 60)
@@ -259,9 +286,16 @@ def main():
         )
     viz.plot_confusion_matrices(cls_results, y_test_cls)
     viz.plot_roc_curves(cls_results)
+    viz.plot_pr_curves(cls_results, y_test_cls)
     viz.plot_model_comparison(cls_results)
+    viz.plot_per_environment_heatmap(cls_results, X_test_cls, y_test_cls, env_ids_test)
+    viz.plot_shap_summary(cls_results, X_test_cls, feature_names)
+    viz.plot_rfe_curve(rfe_results)
 
     viz.plot_clustering(cluster_results, y_test_cls)
+    viz.plot_elbow_silhouette(elbow_results)
+    viz.plot_tsne_embedding(X_test_cls, y_test_cls, cluster_results['test_labels'])
+    viz.plot_dbscan(dbscan_results, y_test_cls)
 
     # Plot transformer attention maps if DL model was trained
     if 'CNN+Transformer' in cls_results:
@@ -276,6 +310,24 @@ def main():
                                  reg_results_p2, y_test_p2[valid_test])
     viz.plot_residuals(reg_results_p1, y_test_p1,
                        reg_results_p2, y_test_p2[valid_test])
+    viz.plot_regression_comparison(reg_results_p1, reg_results_p2)
+
+    # --- Augmentation impact comparison ---
+    print("\n[Augmentation Impact]")
+    original_metrics = {
+        'rf_acc': cls_results['Random Forest']['accuracy'],
+        'rf_auc': cls_results['Random Forest']['auc'],
+        'dl_acc': dl_result['accuracy'],
+        'dl_auc': dl_result['auc'],
+    }
+    augmented_metrics = {
+        'rf_acc': acc_smote,
+        'rf_auc': auc_smote,
+        'dl_acc': dl_result_aug['accuracy'],
+        'dl_auc': dl_result_aug['auc'],
+    }
+    viz.plot_augmentation_impact(original_metrics, augmented_metrics)
+
     viz.plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
                            cls_results, features_df)
 
