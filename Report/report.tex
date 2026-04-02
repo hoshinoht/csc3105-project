@@ -18,17 +18,17 @@
 
 \title{LOS/NLOS Classification and Distance Estimation for UWB Indoor Positioning Using Feature-Engineered ML and Hybrid CNN-Transformer}
 
-\author{\IEEEauthorblockN{Group XX}
-\IEEEauthorblockA{\textit{School of Computing} \\
-\textit{University of Glasgow}\\
-Singapore \\
-}
+\author{
+\IEEEauthorblockN{Po Haoting, Travis Neo Kuang Yi, Chiang Porntep, Nico Caleb Lim, and Dui Ru En Joshua}
+\IEEEauthorblockA{\textit{Lab P1, Group 4, School of Computing} \\
+\textit{Singapore Institute of Technology and University of Glasgow}\\
+Singapore}
 }
 
 \maketitle
 
 \begin{abstract}
-Accurate line-of-sight (LOS) and non-line-of-sight (NLOS) identification is essential for precise ultra-wideband (UWB) indoor positioning. We present a dual-pipeline approach that addresses both two-path LOS/NLOS classification and distance estimation using the Decawave DWM1000 dataset of 42,000 channel impulse response (CIR) measurements. The first pipeline extracts 25 hand-crafted features from two dominant signal paths and trains classical ML models (Logistic Regression, Random Forest, Gradient Boosted Trees), achieving a best AUC of 0.9820. The second pipeline applies a novel hybrid 1D-CNN and Transformer architecture directly to the raw 1016-sample CIR waveform, achieving an AUC of 0.9821 without manual feature engineering. For distance estimation, Random Forest and Gradient Boosted regressors achieve RMSE values of 1.41\,m and 0.99\,m for the first and second dominant paths, respectively. Our results demonstrate that end-to-end deep learning on raw CIR signals matches carefully engineered features, while providing interpretable attention-based signal analysis.
+Accurate line-of-sight (LOS) and non-line-of-sight (NLOS) identification is essential for precise ultra-wideband (UWB) indoor positioning. We study two-path LOS/NLOS classification and path-wise distance estimation on the Decawave DWM1000 dataset. After preprocessing, a valid second path is detected in 40,864 of 41,996 usable samples (97.3\%), producing an expanded two-path dataset of 83,992 rows. On the feature-engineered pipeline, XGBoost achieves the best classification performance (accuracy 0.9404, AUC 0.9834), while simple and stacked ensembles provide only marginal changes. A separate raw-CIR CNN+Transformer pipeline reaches AUC 0.9821 on the original split, improving to 0.9845 with CIR augmentation, but this deep-learning result is not directly comparable to the ML results because it uses a different pipeline and split. For regression, path~1 is moderately predictable (best RMSE 1.3706\,m, $R^2=0.6698$), whereas path~2 attains near-perfect scores because its target is analytically tied to inputs used by the model. These results support tree-based supervised models for this dataset, while unsupervised clustering remains weak.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -47,9 +47,9 @@ Recent advances in deep learning offer an alternative: learning discriminative f
 In this paper, we make the following contributions:
 \begin{itemize}
     \item A two-path extraction and labeling framework that extends binary LOS/NLOS classification to the two dominant signal paths in each CIR measurement.
-    \item A feature engineering pipeline producing 25 per-path features for classical ML models.
-    \item A novel hybrid 1D-CNN + Transformer architecture that operates directly on the raw 1016-sample CIR waveform, achieving classification performance matching hand-crafted features.
-    \item Distance estimation models for both dominant paths, with the second path achieving sub-meter RMSE.
+    \item A feature engineering pipeline producing 25 per-path features for classical ML models, with a compact RFECV-selected subset also examined.
+    \item A hybrid 1D-CNN + Transformer architecture that operates directly on the raw 1016-sample CIR waveform in a separate pre-computed pipeline.
+    \item Distance estimation models for both dominant paths, interpreted with attention to the analytic constraint in the path~2 target definition.
 \end{itemize}
 
 %======================================================================
@@ -134,9 +134,9 @@ UWB CIR measurements often contain multiple propagation paths. The two shortest 
 \end{algorithmic}
 \end{algorithm}
 
-Applying this algorithm to all 42,000 samples, a second path is detected in 27,711 samples (66.0\%). Fig.~\ref{fig:cir} shows example CIR waveforms with detected peaks.
+After preprocessing, 41,996 samples remain usable for two-path extraction, and a second path is detected in 40,864 of them (97.3\%). Fig.~\ref{fig:cir} shows example CIR waveforms with detected peaks.
 
-\textbf{Two-path labeling.} For each original sample, we generate two rows: path~1 retains the original LOS/NLOS label; path~2 is always labeled NLOS (since any secondary reflection is, by definition, not the direct path). This yields an expanded dataset of 84,000 rows (21,000 LOS + 63,000 NLOS).
+\textbf{Two-path labeling.} For each usable original sample, we generate two rows: path~1 retains the original LOS/NLOS label, while path~2 is labeled NLOS because it is a secondary propagation path. This yields an expanded dataset of 83,992 rows with a pronounced class imbalance toward NLOS.
 
 \begin{figure}[t]
 \centering
@@ -147,10 +147,10 @@ Applying this algorithm to all 42,000 samples, a second path is detected in 27,7
 
 \subsection{Feature Engineering Pipeline}
 
-For each detected path, we compute 8 per-path features from the CIR waveform around the peak location (Table~\ref{tab:path_features}), combined with 9 shared scalar features, yielding a 25-dimensional feature vector per path.
+For each detected path, we compute 8 local waveform features (Table~\ref{tab:path_features}) together with 5 full-CIR statistical descriptors, 9 shared scalar features, and 3 derived shared features, yielding a 25-dimensional feature vector per path.
 
 \begin{table}[t]
-\caption{Per-Path Engineered Features (8 per path)}
+\caption{Key local per-path engineered features (8 of the 13 per-path descriptors)}
 \label{tab:path_features}
 \centering
 \begin{tabular}{@{}ll@{}}
@@ -169,7 +169,7 @@ amplitude\_ratio & This path amp / other path amp \\
 \end{tabular}
 \end{table}
 
-Feature importance ranking using Random Forest Gini impurity (Fig.~\ref{fig:importance}) reveals that peak\_to\_noise, energy\_ratio, and CIR\_PWR are the most discriminative features for LOS/NLOS classification.
+Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. In particular, RFECV selects a compact subset consisting of \texttt{p\_path\_amp} and \texttt{p\_peak\_to\_noise}, while broader tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator.
 
 \begin{figure}[t]
 \centering
@@ -178,11 +178,11 @@ Feature importance ranking using Random Forest Gini impurity (Fig.~\ref{fig:impo
 \label{fig:importance}
 \end{figure}
 
-Three classical ML models are trained on the 25-dimensional feature vectors: Logistic Regression (LR) as a linear baseline, Random Forest (RF, 200 trees), and Gradient Boosted Trees (GBT, 200 estimators with learning rate 0.1).
+The classical ML study includes Logistic Regression (LR), Support Vector Machine (SVM), Random Forest (RF), Gradient Boosted Trees (GBT), and XGBoost (XGB), followed by simple averaging and stacked ensembles over the strongest tree-based models.
 
 \subsection{End-to-End Deep Learning Pipeline}
 
-We propose a hybrid 1D-CNN + Transformer architecture (Fig.~\ref{fig:architecture}) that operates directly on the raw 1016-sample CIR waveform. Algorithm~\ref{alg:training} describes the training procedure.
+We propose a hybrid 1D-CNN + Transformer architecture that operates directly on the raw 1016-sample CIR waveform. Algorithm~\ref{alg:training} describes the training procedure.
 
 \textbf{Architecture.} The model consists of three components:
 
@@ -251,7 +251,7 @@ The DL model is trained on the original balanced 42,000-sample dataset (not the 
 
 \subsection{Classification Results}
 
-Table~\ref{tab:cls_results} presents classification performance across all four models. The ML models are evaluated on the two-path expanded test set (16,800 samples), while the CNN-Transformer is evaluated on the original balanced test set (8,400 samples).
+Table~\ref{tab:cls_results} summarizes the supervised classification results. The feature-engineered ML models and ensembles are evaluated on the two-path expanded test set, while the CNN+Transformer results come from a separate raw-CIR pipeline on the original split. The latter should therefore be read as a related reference point rather than a direct apples-to-apples comparison.
 
 \begin{table}[t]
 \caption{Classification Performance}
@@ -261,33 +261,38 @@ Table~\ref{tab:cls_results} presents classification performance across all four 
 \toprule
 \textbf{Model} & \textbf{Accuracy} & \textbf{AUC} & \textbf{Test Set} \\
 \midrule
-Logistic Regression & 0.9185 & 0.9694 & Expanded \\
-Random Forest & 0.9396 & 0.9820 & Expanded \\
-Gradient Boosted Trees & 0.9397 & 0.9820 & Expanded \\
-CNN-Transformer & 0.9312 & 0.9821 & Original \\
+Logistic Regression & 0.9199 & 0.9694 & Expanded \\
+SVM & 0.6523 & 0.8734 & Expanded \\
+Random Forest & 0.9386 & 0.9815 & Expanded \\
+Gradient Boosted Trees & 0.9311 & 0.9819 & Expanded \\
+XGBoost & 0.9404 & 0.9834 & Expanded \\
+Ensemble Avg & 0.9402 & 0.9831 & Expanded \\
+Ensemble Stacked & 0.9415 & 0.9830 & Expanded \\
+CNN+Transformer & 0.9360 & 0.9821 & Original split \\
+CNN+Transformer + CIR Aug & 0.9421 & 0.9845 & Original split \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-All tree-based and deep learning models achieve AUC scores above 0.98, indicating excellent discriminative ability. Fig.~\ref{fig:roc} shows the ROC curves, and Fig.~\ref{fig:confusion} shows the confusion matrices.
+Among directly comparable feature-engineered models, XGBoost is best by AUC (0.9834), while stacked ensembling gives the highest accuracy (0.9415) with essentially no AUC gain over XGBoost alone. SVM is clearly underfit on this representation. In the separate raw-CIR pipeline, CIR augmentation improves the CNN+Transformer more noticeably than SMOTE improves the ML models; however, this DL-vs-ML comparison must remain qualified because the underlying splits and inputs differ. Fig.~\ref{fig:roc} and Fig.~\ref{fig:confusion} show representative ROC and confusion-matrix views for the main baseline models.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{08_roc_curves.png}
-\caption{ROC curves for all classification models. RF, GBT, and CNN-Transformer achieve near-identical AUC ($\approx$0.982).}
+\caption{ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values.}
 \label{fig:roc}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{07_confusion_matrices.png}
-\caption{Confusion matrices for all four classification models.}
+\caption{Confusion matrices for selected baseline classification models.}
 \label{fig:confusion}
 \end{figure}
 
 \subsection{Distance Estimation Results}
 
-Table~\ref{tab:reg_results} presents regression performance for both signal paths. Path~1 distance estimation uses 8,400 test samples; path~2 uses 5,578 samples where a valid second path was detected.
+Table~\ref{tab:reg_results} presents regression performance for both signal paths. Path~1 uses the original test split, while path~2 uses the 8,193 valid path~2 test samples retained after preprocessing and two-path extraction.
 
 \begin{table}[t]
 \caption{Distance Estimation Performance}
@@ -297,18 +302,20 @@ Table~\ref{tab:reg_results} presents regression performance for both signal path
 \toprule
 \textbf{Path} & \textbf{Model} & \textbf{RMSE (m)} & \textbf{$R^2$} \\
 \midrule
-\multirow{3}{*}{Path 1} & Ridge & 1.5905 & 0.5398 \\
- & Random Forest & 1.4081 & 0.6393 \\
- & Gradient Boosted & 1.5009 & 0.5902 \\
+\multirow{4}{*}{Path 1} & Ridge & 1.6164 & 0.5407 \\
+ & Random Forest & 1.3706 & 0.6698 \\
+ & Gradient Boosted & 1.3872 & 0.6617 \\
+ & XGBoost & 1.3726 & 0.6688 \\
 \midrule
-\multirow{3}{*}{Path 2} & Ridge & 1.3681 & 0.9907 \\
- & Random Forest & 1.0306 & 0.9947 \\
- & Gradient Boosted & 0.9890 & 0.9952 \\
+\multirow{4}{*}{Path 2} & Ridge & 0.0000 & 1.0000 \\
+ & Random Forest & 0.4696 & 0.9997 \\
+ & Gradient Boosted & 0.2889 & 0.9999 \\
+ & XGBoost & 1.2176 & 0.9981 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Path~2 regression achieves substantially higher $R^2$ (0.99+) compared to path~1 (0.54--0.64). This is because path~2 distance is computed from the CIR peak offset relative to FP\_IDX, providing a strong geometric relationship that the models can exploit. Fig.~\ref{fig:regression} shows predicted vs. actual distance scatter plots.
+Path~1 regression is materially harder than classification, with the best results coming from RF/XGB-style tree ensembles at roughly 1.37\,m RMSE and $R^2\approx0.67$. Path~2 appears much easier, but this must be interpreted carefully: the target is defined from $\texttt{RANGE} + (\texttt{path2\_idx} - \texttt{FP\_IDX})\cdot c$, while \texttt{RANGE} is also supplied as an input. The near-perfect path~2 scores therefore reflect a strong analytical constraint in the target construction rather than an entirely independent prediction task. Fig.~\ref{fig:regression} shows predicted vs. actual distance scatter plots.
 
 \begin{figure}[t]
 \centering
@@ -322,9 +329,9 @@ Path~2 regression achieves substantially higher $R^2$ (0.99+) compared to path~1
 
 \subsection{ML vs. Deep Learning Comparison}
 
-The most notable finding is the AUC parity between the best ML model (RF/GBT at 0.9820) and the CNN-Transformer (0.9821). This demonstrates that end-to-end deep learning on raw CIR can match carefully engineered features without domain expertise. Fig.~\ref{fig:comparison} summarizes the model comparison.
+The main supervised result is that feature-engineered tree models are very strong on the expanded two-path task: XGBoost reaches AUC 0.9834 and stacked ensembling changes performance only marginally. The CNN+Transformer also performs strongly, reaching AUC 0.9821 on the original split and 0.9845 with CIR augmentation, but this ML-vs-DL comparison is not direct because the deep model is trained and evaluated in a separate raw-CIR pipeline on the original split. Fig.~\ref{fig:comparison} summarizes the model comparison.
 
-The accuracy difference (0.9397 for GBT vs. 0.9312 for CNN-Transformer) should be interpreted with caution, as the models are evaluated on different test sets: the ML models use the imbalanced two-path expanded set (25\% LOS, 75\% NLOS), while the CNN-Transformer uses the balanced original set (50/50). AUC provides a more meaningful comparison as it is threshold-independent and class-balance-invariant.
+Accordingly, we treat the DL results as complementary evidence that raw-CIR learning is viable, not as proof that DL strictly outperforms ML on the same benchmark. Within the notebook experiments, SMOTE has negligible effect on the ML pipeline, whereas CIR augmentation produces a somewhat more visible gain for the separate CNN+Transformer pipeline.
 
 \begin{figure}[t]
 \centering
@@ -346,9 +353,11 @@ A key advantage of the CNN-Transformer is interpretability through attention wei
 
 \subsection{Error Analysis}
 
-Classification errors primarily occur in ambiguous cases where NLOS signals have strong direct-path-like characteristics or where LOS signals experience significant multipath interference. The Logistic Regression model, limited to linear decision boundaries, achieves notably lower AUC (0.9694), confirming that the LOS/NLOS boundary is inherently nonlinear.
+Classification errors primarily occur in ambiguous cases where NLOS signals have strong direct-path-like characteristics or where LOS signals experience significant multipath interference. The gap between LR and the tree-based models confirms that the decision boundary is nonlinear, while the weak SVM result suggests that this particular feature representation and tuning are not robust enough for a margin-based classifier.
 
-For distance estimation, path~1 regression is more challenging ($R^2 \approx 0.64$) because the measured range includes NLOS bias errors that depend on the environment geometry rather than CIR features alone. Path~2 regression benefits from the direct geometric relationship between CIR peak positions and propagation distance.
+For distance estimation, path~1 remains the more meaningful regression task because the measured range includes environment-dependent bias that is not trivially recoverable from a single formula. By contrast, path~2 regression benefits from the direct geometric relationship embedded in the target definition and should not be overstated.
+
+Unsupervised clustering is weak. KMeans reaches only 0.5906 test accuracy with ARI 0.0269, and DBSCAN collapses to 0 discovered clusters with 100\% of samples labeled as noise. These results indicate that LOS/NLOS separation in this dataset is primarily a supervised-learning problem under the features considered here.
 
 \subsection{Model Complexity}
 
@@ -373,9 +382,9 @@ CNN-Transformer & 1016 + 11 & No (end-to-end) \\
 %======================================================================
 \section{Conclusion}
 
-We presented a comprehensive framework for UWB LOS/NLOS classification and distance estimation using dual pipelines: a feature-engineered ML approach and an end-to-end deep learning approach. Our two-path extraction method extends binary classification to the two dominant CIR paths with physically motivated labeling rules.
+We presented a concise UWB LOS/NLOS classification and distance-estimation study using a feature-engineered two-path pipeline together with a separate raw-CIR CNN+Transformer reference pipeline. The two-path extraction stage finds a valid second path in 97.3\% of usable preprocessed samples and expands the supervised dataset to 83,992 rows.
 
-Key findings include: (1) Tree-based models (RF, GBT) achieve AUC of 0.9820 using 25 hand-crafted features; (2) The novel hybrid CNN-Transformer achieves AUC of 0.9821 directly from raw CIR without feature engineering; (3) Distance estimation for the second path achieves sub-meter RMSE (0.99\,m), significantly outperforming first-path estimation; (4) Transformer attention maps provide physically interpretable visualizations of which CIR regions influence classification decisions.
+Key findings are: (1) among directly comparable ML models, XGBoost performs best with accuracy 0.9404 and AUC 0.9834, while ensembling yields only marginal additional benefit; (2) the CNN+Transformer is competitive, and CIR augmentation improves it further, but this DL result comes from a separate original-split raw-CIR pipeline and is not a strict apples-to-apples comparison with the ML results; (3) path~1 regression is moderately accurate, whereas path~2 regression is analytically constrained by the way its target is defined; and (4) clustering results are weak and should not be used to claim strong unsupervised separability.
 
 \subsection{Future Work}
 

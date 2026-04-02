@@ -30,9 +30,22 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 try:
     from xgboost import XGBRegressor
+
     HAS_XGB = True
 except ImportError:
     HAS_XGB = False
+
+
+def _xgb_device():
+    """Auto-detect best XGBoost device: 'cuda' if available, else 'cpu'."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
 
 
 def train_regressors(X_train, y_train, X_test, y_test, path_name=""):
@@ -61,56 +74,72 @@ def train_regressors(X_train, y_train, X_test, y_test, path_name=""):
     print(f"\n--- Ridge Regression ({path_name}) ---")
     ridge = Ridge(alpha=1.0)
     ridge.fit(X_train, y_train)
-    results['Ridge Regression'] = _evaluate_regressor(ridge, X_test, y_test)
+    results["Ridge Regression"] = _evaluate_regressor(ridge, X_test, y_test)
 
     # ── 2. Random Forest Regressor with GridSearchCV ────────────────────
     print(f"\n--- Random Forest Regressor (GridSearchCV) ({path_name}) ---")
     rf = RandomForestRegressor(random_state=42, n_jobs=-1)
     rf_param_grid = {
-        'n_estimators': [200, 300],
-        'max_depth': [20, None],
-        'min_samples_leaf': [1, 3],
+        "n_estimators": [200, 300],
+        "max_depth": [20, None],
+        "min_samples_leaf": [1, 3],
     }
-    gs_rf = GridSearchCV(rf, rf_param_grid, scoring='neg_mean_squared_error',
-                         cv=3, n_jobs=-1, verbose=1)
+    gs_rf = GridSearchCV(
+        rf, rf_param_grid, scoring="neg_mean_squared_error", cv=3, n_jobs=-1, verbose=1
+    )
     gs_rf.fit(X_train, y_train)
     print(f"  Best params: {gs_rf.best_params_}")
-    results['Random Forest Regressor'] = _evaluate_regressor(
-        gs_rf.best_estimator_, X_test, y_test)
+    results["Random Forest Regressor"] = _evaluate_regressor(
+        gs_rf.best_estimator_, X_test, y_test
+    )
 
     # ── 3. Gradient Boosted Regressor with GridSearchCV ─────────────────
     print(f"\n--- Gradient Boosted Regressor (GridSearchCV) ({path_name}) ---")
     gbr = GradientBoostingRegressor(random_state=42)
     gbr_param_grid = {
-        'n_estimators': [200, 300],
-        'learning_rate': [0.05, 0.1],
-        'max_depth': [5, 7],
+        "n_estimators": [200, 300],
+        "learning_rate": [0.05, 0.1],
+        "max_depth": [5, 7],
     }
-    gs_gbr = GridSearchCV(gbr, gbr_param_grid, scoring='neg_mean_squared_error',
-                          cv=3, n_jobs=-1, verbose=1)
+    gs_gbr = GridSearchCV(
+        gbr,
+        gbr_param_grid,
+        scoring="neg_mean_squared_error",
+        cv=3,
+        n_jobs=-1,
+        verbose=1,
+    )
     gs_gbr.fit(X_train, y_train)
     print(f"  Best params: {gs_gbr.best_params_}")
-    results['Gradient Boosted Regressor'] = _evaluate_regressor(
-        gs_gbr.best_estimator_, X_test, y_test)
+    results["Gradient Boosted Regressor"] = _evaluate_regressor(
+        gs_gbr.best_estimator_, X_test, y_test
+    )
 
     # ── 4. XGBoost Regressor with GPU-accelerated GridSearchCV ──────────
     if HAS_XGB:
         print(f"\n--- XGBoost Regressor (GridSearchCV, GPU) ({path_name}) ---")
         xgb = XGBRegressor(
             random_state=42,
-            device='cuda',
+            device=_xgb_device(),
         )
         xgb_param_grid = {
-            'n_estimators': [200, 500],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.05, 0.1],
+            "n_estimators": [200, 500],
+            "max_depth": [4, 6, 8],
+            "learning_rate": [0.05, 0.1],
         }
-        gs_xgb = GridSearchCV(xgb, xgb_param_grid, scoring='neg_mean_squared_error',
-                              cv=3, n_jobs=1, verbose=1)
+        gs_xgb = GridSearchCV(
+            xgb,
+            xgb_param_grid,
+            scoring="neg_mean_squared_error",
+            cv=3,
+            n_jobs=1,
+            verbose=1,
+        )
         gs_xgb.fit(X_train, y_train)
         print(f"  Best params: {gs_xgb.best_params_}")
-        results['XGBoost Regressor'] = _evaluate_regressor(
-            gs_xgb.best_estimator_, X_test, y_test)
+        results["XGBoost Regressor"] = _evaluate_regressor(
+            gs_xgb.best_estimator_, X_test, y_test
+        )
     else:
         print(f"\n--- XGBoost Regressor: skipped (xgboost not installed) ---")
 
@@ -125,9 +154,9 @@ def _evaluate_regressor(model, X_test, y_test):
     r2 = r2_score(y_test, y_pred)
     print(f"  RMSE: {rmse:.4f} m, MAE: {mae:.4f} m, R²: {r2:.4f}")
     return {
-        'model': model,
-        'y_pred': y_pred,
-        'rmse': rmse,
-        'mae': mae,
-        'r2': r2,
+        "model": model,
+        "y_pred": y_pred,
+        "rmse": rmse,
+        "mae": mae,
+        "r2": r2,
     }
