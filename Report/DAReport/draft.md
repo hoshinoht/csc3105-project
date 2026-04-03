@@ -1173,13 +1173,13 @@ The transformer's self-attention mechanism often assigns weight to CIR regions n
 
 # Individual Contributions
 
-| Member              | SIT ID  | Glasgow ID | Contributions     |
-| ------------------- | ------- | ---------- | ----------------- |
-| Po Haoting          | 2401280 | 3070642P   | [To be filled in] |
-| Travis Neo Kuang Yi | 2401250 | 3070641N   | [To be filled in] |
-| Chiang Porntep      | 2403352 | 3070566C   | [To be filled in] |
-| Nico Caleb Lim      | 2401536 | 3070658L   | [To be filled in] |
-| Dui Ru En Joshua    | 2402201 | 3070683D   | [To be filled in] |
+| Member              | SIT ID  | Glasgow ID | Contributions                              |
+| ------------------- | ------- | ---------- | ------------------------------------------ |
+| Po Haoting          | 2401280 | 3070642P   | Training of the CNN Models for Evalulation |
+| Travis Neo Kuang Yi | 2401250 | 3070641N   | [To be filled in]                          |
+| Chiang Porntep      | 2403352 | 3070566C   | [To be filled in]                          |
+| Nico Caleb Lim      | 2401536 | 3070658L   | [To be filled in]                          |
+| Dui Ru En Joshua    | 2402201 | 3070683D   | [To be filled in]                          |
 
 ---
 
