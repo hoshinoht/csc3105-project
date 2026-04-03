@@ -7,6 +7,12 @@ scipy>=1.11
 # Deep learning
 torch>=2.0
 
+# Gradient boosting (used in classification ensemble)
+xgboost>=1.7
+
+# Explainability
+shap>=0.44
+
 # Visualization
 matplotlib>=3.7
 seaborn>=0.12
