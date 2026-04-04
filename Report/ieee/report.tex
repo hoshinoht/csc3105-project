@@ -39,24 +39,38 @@ UWB, LOS/NLOS classification, channel impulse response, CNN, Transformer, indoor
 %======================================================================
 \section{Introduction}
 
-Ultra-wideband (UWB) technology has emerged as a leading solution for centimeter-level indoor positioning due to its high time resolution and resistance to multipath fading~\cite{b1}. However, NLOS propagation conditions cause systematic ranging errors that severely degrade positioning accuracy. Identifying whether a signal travels via LOS or NLOS is therefore critical for mitigating these errors~\cite{b2}.
+Ultra-wideband (UWB) technology has emerged as a leading solution for centimeter-level indoor positioning due to its high time resolution and resistance to multipath fading~\cite{b1}. However, non-line-of-sight (NLOS) propagation conditions---caused by obstacles such as walls, furniture, and human bodies---introduce systematic ranging errors that severely degrade positioning accuracy~\cite{b2}. Identifying whether a received signal has traveled via a line-of-sight (LOS) or NLOS path is therefore a critical prerequisite for accurate indoor localization.
 
-The channel impulse response (CIR) recorded by UWB receivers encodes rich information about the propagation environment. Traditional approaches extract hand-crafted features such as rise time, kurtosis, and energy ratios from the CIR, then apply classifiers like support vector machines (SVM), k-nearest neighbors, or random forests~\cite{b3,b4}. While effective, these methods rely on domain expertise for feature selection and may miss subtle signal patterns.
+\subsection{Problem Statement}
 
-Recent advances in deep learning offer an alternative: learning discriminative features directly from raw waveforms. Convolutional neural networks (CNNs) have been applied to UWB CIR classification~\cite{b5}, but they capture only local patterns. Transformer architectures~\cite{b6} excel at modeling long-range dependencies through self-attention, and recent work has demonstrated their effectiveness for UWB NLOS detection specifically~\cite{b10,b11}. This makes hybrid CNN-Transformer designs well-suited for analyzing the full CIR waveform where multipath components may be widely separated.
+The core challenge in UWB indoor positioning is that NLOS propagation adds a positive bias to the measured range, because signals travel longer paths via reflection, diffraction, or scattering. Without reliable LOS/NLOS classification, ranging errors of several meters can persist, rendering downstream position estimates unreliable~\cite{b3}. The problem is compounded in dense indoor environments where multiple propagation paths coexist in the channel impulse response (CIR), and the dominant path may not be the direct one.
 
-In this paper, we make the following contributions:
+\subsection{State-of-the-Art Solutions}
+
+Existing approaches to LOS/NLOS classification fall into two broad categories.
+
+\textbf{Feature-engineered methods.} Traditional approaches extract hand-crafted features from the CIR---such as rise time, kurtosis, energy ratios, and peak-to-noise metrics---and feed them to classifiers like support vector machines (SVMs), k-nearest neighbors (KNN), or random forests~\cite{b3,b4}. These methods are well-studied and interpretable, but rely heavily on domain expertise for feature selection and may miss subtle signal patterns.
+
+\textbf{Deep learning methods.} Recent work applies convolutional neural networks (CNNs) directly to the raw CIR waveform, bypassing manual feature engineering~\cite{b5}. However, standard CNNs capture only local patterns. Transformer architectures~\cite{b6}, which model long-range dependencies through self-attention, have recently been applied to UWB NLOS detection~\cite{b10,b11} and show promise for capturing relationships between widely separated multipath components.
+
+\subsection{Limitations of Existing Approaches}
+
+Despite their effectiveness, current methods exhibit several weaknesses: (1)~feature-engineered approaches treat each CIR measurement as a single-path decision, discarding the rich information in secondary propagation paths; (2)~CNN-only deep learning models lack the ability to relate distant CIR components, limiting their capacity to capture multipath relationships; and (3)~most studies evaluate on the original balanced dataset without examining how classification extends to multi-path scenarios with realistic class imbalance.
+
+\subsection{Proposed Solution}
+
+In this paper, we address these limitations through a dual-pipeline approach:
 \begin{itemize}
-    \item A two-path extraction and labeling framework that extends binary LOS/NLOS classification to the two dominant signal paths in each CIR measurement.
-    \item A feature engineering pipeline producing 25 per-path features for classical ML models, with a compact RFECV-selected subset also examined.
-    \item A hybrid 1D-CNN + Transformer architecture that operates directly on the raw 1016-sample CIR waveform in a separate pre-computed pipeline.
-    \item Distance estimation models for both dominant paths, interpreted with attention to the analytic constraint in the path~2 target definition.
+    \item A \textbf{two-path extraction and labeling framework} that extends binary LOS/NLOS classification to the two dominant signal paths in each CIR measurement, producing an expanded dataset with realistic class imbalance.
+    \item A \textbf{feature engineering pipeline} producing 25 per-path features for classical ML models (Logistic Regression, SVM, Random Forest, Gradient Boosted Trees, XGBoost, and ensembles), with a compact RFECV-selected subset also examined.
+    \item A \textbf{hybrid 1D-CNN + Transformer architecture} that operates directly on the raw 1016-sample CIR waveform, combining local feature extraction with global self-attention in a separate end-to-end pipeline.
+    \item \textbf{Distance estimation models} for both dominant paths, interpreted with attention to the analytic constraint in the path~2 target definition.
 \end{itemize}
 
 %======================================================================
-\section{Dataset and Data Preparation}
+\section{Proposed Solution Description}
 
-\subsection{Dataset Description}
+\subsection{Dataset and Data Preparation}
 
 We use the publicly available UWB LOS/NLOS dataset~\cite{b7} collected using Decawave DWM1000 modules across seven distinct indoor environments. The dataset contains 42,000 samples (21,000 LOS and 21,000 NLOS), each comprising 14 scalar features and a 1016-sample CIR recorded at 1\,ns resolution. Table~\ref{tab:features} summarizes the key features.
 
@@ -82,8 +96,6 @@ CIR0--CIR1015 & 1016-sample channel impulse response \\
 \end{tabular}
 \end{table}
 
-\subsection{Data Preparation}
-
 Our preprocessing pipeline performs the following steps:
 
 \textbf{CIR normalization.} Each CIR sample is divided by its corresponding RXPACC value to normalize the preamble accumulation effect.
@@ -107,10 +119,7 @@ Fig.~\ref{fig:distributions} shows the distribution of key features by LOS/NLOS 
 
 % Correlation heatmap omitted for space; FP\_AMP1--3 are highly correlated (r>0.9), as are STDEV\_NOISE and MAX\_NOISE.
 
-%======================================================================
-\section{Proposed Methodology}
-
-\subsection{Two-Path Extraction}
+\subsection{Two-Path Extraction and Labeling}
 
 UWB CIR measurements often contain multiple propagation paths. The two shortest (dominant) paths carry the most information for positioning: if the first path is LOS, the second is necessarily NLOS (reflected); if the first path is NLOS, both paths are NLOS. Algorithm~\ref{alg:peak} describes our peak detection procedure.
 
@@ -255,7 +264,7 @@ Device & Auto-select (CUDA/MPS/CPU) \\
 The DL model is trained on the original balanced 42,000-sample dataset (not the two-path expanded set), using an 80/20 stratified split in a separate pre-computed raw-CIR pipeline.
 
 %======================================================================
-\section{Experimental Results}
+\section{Experimental Results and Discussion}
 
 \subsection{Classification Results}
 
@@ -339,9 +348,6 @@ Path~1 regression is materially harder than classification because the target RA
 \caption{Regression residual distributions. Path~1 shows a slight positive bias from NLOS ranging error; path~2 residuals are tightly clustered around zero, consistent with the analytically constrained target.}
 \label{fig:residuals}
 \end{figure}
-
-%======================================================================
-\section{Discussion}
 
 \subsection{ML vs. Deep Learning Comparison}
 

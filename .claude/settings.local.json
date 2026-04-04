@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l:*)",
+      "Bash(python3:*)",
+      "Bash(python -c:*)",
+      "Bash(python main.py:*)",
+      "Bash(pip install:*)",
+      "Bash(PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 python:*)",
+      "Bash(pandoc:*)",
+      "Bash(npx:*)",
+      "Bash(npm:*)",
+      "mcp__plugin_docs-tools_docs__docs_presets_show"
+    ]
+  }
+}
