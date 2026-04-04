@@ -27,46 +27,46 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Example CIR waveforms showing detected first path (triangle) and second path (circle) for LOS and NLOS conditions.}}{2}{figure.2}\protected@file@percent }
 \newlabel{fig:cir}{{2}{2}{Example CIR waveforms showing detected first path (triangle) and second path (circle) for LOS and NLOS conditions}{figure.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Feature Engineering Pipeline}{2}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}End-to-End Deep Learning Pipeline}{2}{subsection.3.3}\protected@file@percent }
 \citation{b14}
 \citation{b15}
 \citation{b12}
 \citation{b13}
-\citation{b3,b4}
 \@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Key local per-path engineered features (8 of the 13 per-path descriptors)}}{3}{table.2}\protected@file@percent }
 \newlabel{tab:path_features}{{II}{3}{Key local per-path engineered features (8 of the 13 per-path descriptors)}{table.2}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate.}}{3}{figure.3}\protected@file@percent }
 \newlabel{fig:importance}{{3}{3}{Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate}{figure.3}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Results}{3}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Classification Results}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}End-to-End Deep Learning Pipeline}{3}{subsection.3.3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces SHAP feature impact: beeswarm plot (left) showing per-sample feature contributions and mean absolute SHAP values (right) confirming Gini-based rankings.}}{3}{figure.4}\protected@file@percent }
 \newlabel{fig:shap}{{4}{3}{SHAP feature impact: beeswarm plot (left) showing per-sample feature contributions and mean absolute SHAP values (right) confirming Gini-based rankings}{figure.4}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces CNN-Transformer Hyperparameters}}{3}{table.3}\protected@file@percent }
 \newlabel{tab:hyperparams}{{III}{3}{CNN-Transformer Hyperparameters}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Distance Estimation Results}{3}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Results}{3}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Classification Results}{3}{subsection.4.1}\protected@file@percent }
+\citation{b3,b4}
 \@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces CNN-Transformer Training}}{4}{algorithm.2}\protected@file@percent }
 \newlabel{alg:training}{{2}{4}{End-to-End Deep Learning Pipeline}{algorithm.2}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Classification Performance}}{4}{table.4}\protected@file@percent }
 \newlabel{tab:cls_results}{{IV}{4}{Classification Performance}{table.4}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {V}Discussion}{4}{section.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}ML vs. Deep Learning Comparison}{4}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Distance Estimation Results}{4}{subsection.4.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values.}}{4}{figure.5}\protected@file@percent }
 \newlabel{fig:roc}{{5}{4}{ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values}{figure.5}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Confusion matrices for selected baseline classification models.}}{4}{figure.6}\protected@file@percent }
 \newlabel{fig:confusion}{{6}{4}{Confusion matrices for selected baseline classification models}{figure.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {V}Discussion}{4}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}ML vs. Deep Learning Comparison}{4}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Interpretability via Attention}{4}{subsection.5.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Error Analysis}{4}{subsection.5.3}\protected@file@percent }
-\bibcite{b1}{1}
 \@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Distance Estimation Performance}}{5}{table.5}\protected@file@percent }
 \newlabel{tab:reg_results}{{V}{5}{Distance Estimation Performance}{table.5}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Predicted vs. actual distance for path 1 (left) and path 2 (right) regression models.}}{5}{figure.7}\protected@file@percent }
 \newlabel{fig:regression}{{7}{5}{Predicted vs. actual distance for path 1 (left) and path 2 (right) regression models}{figure.7}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {VI}Conclusion}{5}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Error Analysis}{5}{subsection.5.3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Regression residual distributions. Path~1 shows a slight positive bias from NLOS ranging error; path~2 residuals are tightly clustered around zero, consistent with the analytically constrained target.}}{5}{figure.8}\protected@file@percent }
 \newlabel{fig:residuals}{{8}{5}{Regression residual distributions. Path~1 shows a slight positive bias from NLOS ranging error; path~2 residuals are tightly clustered around zero, consistent with the analytically constrained target}{figure.8}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Comparison of classification metrics across all models.}}{5}{figure.9}\protected@file@percent }
 \newlabel{fig:comparison}{{9}{5}{Comparison of classification metrics across all models}{figure.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Conclusion}{5}{section.6}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}Future Work}{5}{subsection.6.1}\protected@file@percent }
+\bibcite{b1}{1}
 \bibcite{b2}{2}
 \bibcite{b3}{3}
 \bibcite{b4}{4}

@@ -84,7 +84,7 @@ We propose a **dual-pipeline architecture** that combines classical machine lear
 - **Pipeline 1 (Feature-Engineered ML)**: Extract 25 physics-motivated features per path, then train and compare Logistic Regression, Random Forest, Gradient Boosted Trees (GBT), and XGBoost classifiers.
 - **Pipeline 2 (End-to-End DL)**: Feed the raw 1016-sample CIR directly into a hybrid CNN+Transformer architecture that learns its own representations.
 
-The feature-engineered ML pipeline is evaluated inline on the expanded two-path tabular benchmark, while the CNN+Transformer results are reported from a separate pre-computed raw-CIR pipeline on the original sample split. This design supports a qualitative comparison between domain-engineered and end-to-end representations, but it is not a strict controlled benchmark.
+The feature-engineered ML pipeline is evaluated on the expanded two-path dataset, while the CNN+Transformer results are reported from a separate pipeline that operates on raw CIR waveforms with the original train/test split. This design supports a qualitative comparison between the two representation strategies but does not constitute a strictly controlled benchmark.
 
 Classical NLOS-mitigation studies [2]–[4] describe the propagation mechanisms that motivate our hand-crafted features, while recent learning-based studies [5], [10], [11] show that discriminative CIR representations can be learned directly from waveform structure. Our contribution is therefore not the use of transformers in isolation, but the integration of a hybrid CNN+Transformer model within a broader two-path extraction framework and its comparison against a feature-engineered ML pipeline on the Bregar and Mohorčič dataset [7].
 
@@ -154,7 +154,7 @@ For each detected peak, a local ±15-sample window is extracted from the CIR, an
 
 - **`path_idx`**: The CIR sample index of the detected peak (temporal location)
 - **`path_amp`**: The absolute amplitude of the peak in the CIR
-- **`rise_time`**: The number of samples from the left side where amplitude first crosses 10% of the peak amplitude, going back to the peak. Measures how sharply the path arrives.
+- **`rise_time`**: The number of samples between the point where amplitude first exceeds 10% of the peak value (searching leftward from the peak) and the peak itself. Measures how sharply the path arrives.
 - **`decay_time`**: Symmetric to rise_time, measuring how quickly amplitude decays after the peak. NLOS signals typically have longer, slower decays.
 - **`kurtosis_local`**: Fisher kurtosis of the local ±15-sample window. High kurtosis indicates a sharp, spiky peak (typical of LOS direct paths). Low kurtosis indicates a flat, spread-out shape (typical of NLOS scattered paths).
 - **`energy_ratio`**: Ratio of the local window's energy (sum of squared amplitudes) to the total CIR energy. A dominant first path (LOS) concentrates energy in its local window.
@@ -242,7 +242,7 @@ Global average pooling collapses the 127-step sequence to a single 128-dimension
 
 - **Optimizer**: Adam [15] with initial learning rate 1e-3
 - **Loss**: Binary cross-entropy with logits (BCEWithLogitsLoss)
-- **Label smoothing**: Targets are soft-labeled using standard binary label smoothing with ε = 0.05 (0.975 for positive, 0.025 for negative) to reduce overconfidence [12]
+- **Label smoothing**: Targets are soft-labeled using a binary adaptation of label smoothing [12] with ε = 0.05 (0.975 for positive, 0.025 for negative) to reduce overconfidence
 - **Learning rate schedule**: ReduceLROnPlateau (patience=2, factor=0.5)
 - **Early stopping**: Patience=5 epochs on validation loss
 - **Batch size**: 256
@@ -553,7 +553,7 @@ XGBoost's built-in regularization (L1 and L2 penalties on tree weights) provides
 
 ### CNN+Transformer Deep Learning
 
-The hybrid CNN+Transformer model is trained on the **original-sample raw-CIR pipeline** (not the expanded two-path set, since the raw CIR is the same for both paths of the same sample). The reported results are **pre-computed from a separate pipeline on the original split**, so they should be compared qualitatively rather than as a direct inline replacement for the tabular two-path benchmark:
+The hybrid CNN+Transformer model is trained on the original-sample raw-CIR pipeline rather than the expanded two-path set, since the raw CIR is identical for both paths of a given sample. Because results are pre-computed from this separate pipeline, they should be compared qualitatively with the tabular benchmarks:
 
 - **Accuracy**: 0.9360
 - **AUC**: 0.9821
@@ -570,7 +570,7 @@ With raw-CIR augmentation in that separate pipeline, the CNN+Transformer reaches
 
 K-Means (k=2) is applied to the expanded two-path 25-feature dataset used by the tabular classifiers. In the evaluated implementation, this clustering step does not apply an additional StandardScaler internally; results therefore reflect the raw engineered feature magnitudes and the inherent 25/75 class imbalance of the expanded labeling setup.
 
-With optimal cluster-to-label mapping, K-Means reaches only **0.5906 test accuracy** and **0.0269 ARI**. These values indicate weak unsupervised label recovery rather than meaningful autonomous discovery of the LOS/NLOS boundary. PCA visualization of the 25-dimensional feature space projected to 2D in `plots/14_clustering.png` should therefore be interpreted cautiously: overlap between classes remains substantial.
+With optimal cluster-to-label mapping, K-Means reaches only **0.5906 test accuracy** and **0.0269 ARI**. These values indicate weak unsupervised label recovery rather than meaningful unsupervised recovery of the LOS/NLOS boundary. PCA visualization of the 25-dimensional feature space projected to 2D in `plots/14_clustering.png` should therefore be interpreted cautiously: overlap between classes remains substantial.
 
 ## Distance Estimation (Regression)
 
@@ -594,7 +594,7 @@ Path 2 regression uses the 25 per-path features plus the original RANGE measurem
 - **Gradient Boosted Regressor**: RMSE = 0.2889 m, R² = 0.9999
 - **XGBoost Regressor**: RMSE = 1.2176 m, R² = 0.9981
 
-Path 2 achieves dramatically better regression performance because its target is **analytically constrained** by how it is constructed from RANGE and path timing. The perfect Ridge result should therefore not be interpreted as evidence that Path 2 is an intrinsically easy real-world regression task; rather, it reflects that the label definition is close to a deterministic linear function of the supplied inputs.
+Path 2 achieves dramatically better regression performance because its target is **analytically constrained** by how it is constructed from RANGE and path timing. The perfect Ridge result should therefore not be interpreted as evidence that Path 2 is an intrinsically easy real-world regression task; rather, it reflects that the target is an exact linear combination of features supplied as inputs.
 
 ---
 
@@ -630,7 +630,7 @@ The correlation matrix heatmap reveals linear relationships between all scalar f
 
 - **FP_AMP1, FP_AMP2, FP_AMP3** are highly correlated with each other (r > 0.9), indicating redundancy; these three features measure the same first-path signal at different receiver processing stages
 - **CIR_PWR** is correlated with the FP_AMP features, consistent with the physical relationship between path amplitude and total channel power
-- **STDEV_NOISE and MAX_NOISE** are highly correlated (r about 0.95), as both measure noise floor properties
+- **STDEV_NOISE and MAX_NOISE** are highly correlated ($r \approx 0.95$), as both measure noise floor properties
 
 High correlations suggest that dimensionality reduction (e.g., PCA) could reduce the 11 scalar features further without significant information loss. However, tree-based methods are robust to correlated features, so all features are retained.
 
@@ -671,7 +671,7 @@ Lower-ranked features (`FRAME_LEN`, `PREAM_LEN`) are protocol parameters with li
 
 ![Confusion Matrices for Selected Inline Classification Models](../../plots/07_confusion_matrices.png)
 
-2×2 confusion matrices are shown for the inline tabular classifiers and ensemble variants plotted in Figure 7 (Logistic Regression, SVM, Random Forest, Gradient Boosted Trees, XGBoost, Ensemble Average, and Ensemble Stacked). Each matrix shows True Positive (correctly predicted NLOS), True Negative (correctly predicted LOS), False Positive (LOS predicted as NLOS), and False Negative (NLOS predicted as LOS).
+2×2 confusion matrices are shown for the inline tabular classifiers and ensemble variants (Logistic Regression, SVM, Random Forest, GBT, XGBoost, Ensemble Average, and Ensemble Stacked). Each matrix shows True Positive (correctly predicted NLOS), True Negative (correctly predicted LOS), False Positive (LOS predicted as NLOS), and False Negative (NLOS predicted as LOS).
 
 Key observations:
 - The strongest tree-based models and the ensemble variants have similar confusion-matrix shapes, with false negatives (missed NLOS detections) often slightly more common than false positives
@@ -692,7 +692,7 @@ Receiver Operating Characteristic (ROC) curves plot the True Positive Rate (sens
 - **Ensemble (Average)**: AUC = 0.9831
 - **Ensemble (Stacked)**: AUC = 0.9830
 
-Figure 8 plots the inline tabular classifiers and ensembles only. The separate raw-CIR CNN+Transformer result is competitive with the strongest inline tabular models, but it is reported from a different pipeline on the original split and is therefore summarized in Table 1 rather than overlaid here.
+The ROC curves plot the inline tabular classifiers and ensembles only. The separate raw-CIR CNN+Transformer result is competitive with the strongest inline tabular models, but it is reported from a different pipeline on the original split and is therefore summarized in Table 1 rather than overlaid here.
 
 In this setup, AUC is a comparatively stable cross-model summary because it is threshold-independent and less sensitive to differing class balances. Even so, AUC does not fully remove the cross-pipeline comparability caveat.
 
@@ -829,6 +829,7 @@ The AUC is the primary comparison metric because it is threshold-independent and
 | Model                          | Accuracy | AUC    | Test Set                        |
 | ------------------------------ | -------- | ------ | ------------------------------- |
 | Logistic Regression            | 0.9199   | 0.9694 | Expanded 2-path set             |
+| SVM (RBF)                      | 0.6523   | 0.8734 | Expanded 2-path set             |
 | Random Forest                  | 0.9386   | 0.9815 | Expanded 2-path set             |
 | Gradient Boosted Trees         | 0.9311   | 0.9819 | Expanded 2-path set             |
 | XGBoost                        | 0.9404   | 0.9834 | Expanded 2-path set             |
@@ -853,7 +854,7 @@ A rigorous architecture comparison would require all model families to be traine
 
 ### Synthetic Data Impact
 
-**SMOTE + Random Forest**: Negligible change. The notebook reports **RF + SMOTE = 0.9389 / 0.9813** versus **RF original = 0.9386 / 0.9815**, so oversampling does not materially improve the already large tabular training set.
+**SMOTE + Random Forest**: The effect is negligible. The notebook reports **RF + SMOTE = 0.9389 / 0.9813** versus **RF original = 0.9386 / 0.9815**, so oversampling does not materially improve the already large tabular training set.
 
 **CIR Augmentation + CNN+Transformer**: In the separate pre-computed raw-CIR pipeline, augmentation improves the CNN+Transformer from **0.9360 / 0.9821** to **0.9421 / 0.9845**. This is a more noticeable gain than the SMOTE result, but it should still be discussed as a cross-pipeline augmentation study rather than as an inline notebook retraining experiment.
 
@@ -882,13 +883,13 @@ Conclusion: augmentation effects are representation-dependent in this project. S
 
 **Path 1 regression errors** are largest for NLOS samples measured in environments with large, variable NLOS bias (e.g., concrete-walled rooms vs. office environments with furniture).
 
-**Path 2 detection failures** occur in **1,132 of 41,996 usable samples** (2.7%). These cases still matter because they reduce reliable secondary-path coverage in the two-path analysis, but the failure rate is far lower than earlier draft estimates.
+**Path 2 detection failures** occur in **1,132 of 41,996 usable samples** (2.7%). These cases still matter because they reduce reliable secondary-path coverage in the two-path analysis, but the failure rate is low overall.
 
 ---
 
 # Source Code Listings
 
-The full source code repository link should be inserted here before final submission.
+The full source code is available at: [https://github.com/hoshinoht/csc3105-project](https://github.com/hoshinoht/csc3105-project)
 
 The analyses above establish the empirical findings; the excerpts below summarize the implementation components that produce those outputs.
 
@@ -1201,7 +1202,7 @@ def scale_and_split(df, test_size=0.2, random_state=42):
 
 **Prominence-based Path 2 selection**: Using scipy's `find_peaks` with a prominence constraint is more robust than naive amplitude-based selection. Prominence measures a peak relative to its surrounding baseline rather than absolutely, making it invariant to slow-varying CIR envelope changes and reducing false path detections from noise fluctuations.
 
-**Label smoothing (ε = 0.05)**: Applied to the CNN+Transformer training targets using standard binary label smoothing [12]. Rather than optimizing for hard 0/1 labels, the model is trained toward 0.025 (negative) and 0.975 (positive). This prevents overconfidence and improves calibration, particularly important for the ensemble fusion where the DL model's probabilities are combined with ML model probabilities.
+**Label smoothing (ε = 0.05)**: Applied to the CNN+Transformer training targets using a binary adaptation of label smoothing [12]. Rather than optimizing for hard 0/1 labels, the model is trained toward 0.025 (negative) and 0.975 (positive). This prevents overconfidence and improves calibration, particularly important for the ensemble fusion where the DL model's probabilities are combined with ML model probabilities.
 
 ## Interpreting the DL-versus-ML Comparison
 

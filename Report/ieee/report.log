@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.3)  4 APR 2026 23:44
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.3)  4 APR 2026 23:50
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -556,16 +556,19 @@ Underfull \hbox (badness 1540) in paragraph at lines 262--263
  []
 
 
+Underfull \vbox (badness 2435) has occurred while \output is active []
+
+
 Underfull \hbox (badness 1394) in paragraph at lines 285--286
 []\OT1/ptm/m/n/10 Among di-rectly com-pa-ra-ble feature-engineered mod-els,
  []
 
-<plots/08_roc_curves.png, id=160, 493.845pt x 420.6114pt>
+<plots/08_roc_curves.png, id=159, 493.845pt x 420.6114pt>
 File: plots/08_roc_curves.png Graphic file (type png)
 <use plots/08_roc_curves.png>
 Package pdftex.def Info: plots/08_roc_curves.png  used on input line 289.
 (pdftex.def)             Requested size: 252.0pt x 214.6245pt.
-<plots/07_confusion_matrices.png, id=161, 1424.2008pt x 570.933pt>
+<plots/07_confusion_matrices.png, id=160, 1424.2008pt x 570.933pt>
 File: plots/07_confusion_matrices.png Graphic file (type png)
 <use plots/07_confusion_matrices.png>
 Package pdftex.def Info: plots/07_confusion_matrices.png  used on input line 29
@@ -573,37 +576,34 @@ Package pdftex.def Info: plots/07_confusion_matrices.png  used on input line 29
 (pdftex.def)             Requested size: 252.0pt x 101.02115pt.
 [3 <./plots/06_feature_importance.png> <./plots/20_shap_beeswarm.png> <./plots/
 21_shap_bar.png>]
-<plots/10_predicted_vs_actual.png, id=188, 854.7132pt x 355.0866pt>
+<plots/10_predicted_vs_actual.png, id=186, 854.7132pt x 355.0866pt>
 File: plots/10_predicted_vs_actual.png Graphic file (type png)
 <use plots/10_predicted_vs_actual.png>
 Package pdftex.def Info: plots/10_predicted_vs_actual.png  used on input line 3
 31.
 (pdftex.def)             Requested size: 252.0pt x 104.69003pt.
-<plots/11_residuals.png, id=189, 855.195pt x 355.0866pt>
+<plots/11_residuals.png, id=187, 855.195pt x 355.0866pt>
 File: plots/11_residuals.png Graphic file (type png)
 <use plots/11_residuals.png>
 Package pdftex.def Info: plots/11_residuals.png  used on input line 338.
 (pdftex.def)             Requested size: 252.0pt x 104.63043pt.
-<plots/09_model_comparison.png, id=191, 566.115pt x 349.305pt>
+<plots/09_model_comparison.png, id=189, 566.115pt x 349.305pt>
 File: plots/09_model_comparison.png Graphic file (type png)
 <use plots/09_model_comparison.png>
 Package pdftex.def Info: plots/09_model_comparison.png  used on input line 354.
 
 (pdftex.def)             Requested size: 252.0pt x 155.48553pt.
-<plots/13_attention_map.png, id=193, 1437.6912pt x 569.0058pt>
+ [4 <./plots/08_roc_curves.png> <./plots/07_confusion_matrices.png>]
+<plots/13_attention_map.png, id=223, 1437.6912pt x 569.0058pt>
 File: plots/13_attention_map.png Graphic file (type png)
 <use plots/13_attention_map.png>
 Package pdftex.def Info: plots/13_attention_map.png  used on input line 365.
 (pdftex.def)             Requested size: 252.0pt x 99.73378pt.
- [4 <./plots/08_roc_curves.png> <./plots/07_confusion_matrices.png>]
+
 Underfull \hbox (badness 1824) in paragraph at lines 389--390
 []\OT1/ptm/m/n/10 Several di-rec-tions merit fur-ther in-ves-ti-ga-tion: (1) En
 -
  []
-
-
-Package balance Warning: You have called \balance in second column
-(balance)                Columns might not be balanced.
 
 [5 <./plots/10_predicted_vs_actual.png> <./plots/11_residuals.png> <./plots/09_
 model_comparison.png>]
@@ -629,11 +629,11 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 Here is how much of TeX's memory you used:
  11873 strings out of 467525
  185050 string characters out of 5418983
- 621230 words of memory out of 5000000
+ 619230 words of memory out of 5000000
  40525 multiletter control sequences out of 15000+600000
  672079 words of font info for 129 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,10n,79p,1226b,578s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,10n,79p,1226b,558s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb
 ></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></
@@ -653,7 +653,7 @@ xmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/local/texlive/2026/texmf-dist
 e1/urw/times/utmbi8a.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/urw/ti
 mes/utmr8a.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/urw/times/utmri8
 a.pfb>
-Output written on report.pdf (6 pages, 1640353 bytes).
+Output written on report.pdf (6 pages, 1641012 bytes).
 PDF statistics:
  339 PDF objects out of 1000 (max. 8388607)
  268 compressed objects within 3 object streams
