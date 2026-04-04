@@ -165,13 +165,22 @@ amplitude\_ratio & This path amp / other path amp \\
 \end{tabular}
 \end{table}
 
-Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. In particular, RFECV selects a compact subset consisting of \texttt{p\_path\_amp} and \texttt{p\_peak\_to\_noise}, while broader tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator.
+Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. In particular, RFECV selects a compact subset consisting of \texttt{p\_path\_amp} and \texttt{p\_peak\_to\_noise}, while broader tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator. SHAP analysis~\cite{b16} (Fig.~\ref{fig:shap}) confirms these rankings from a model-agnostic perspective.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{06_feature_importance.png}
 \caption{Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate.}
 \label{fig:importance}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.48\columnwidth]{20_shap_beeswarm.png}
+\hfill
+\includegraphics[width=0.48\columnwidth]{21_shap_bar.png}
+\caption{SHAP feature impact: beeswarm plot (left) showing per-sample feature contributions and mean absolute SHAP values (right) confirming Gini-based rankings.}
+\label{fig:shap}
 \end{figure}
 
 The classical ML study includes Logistic Regression (LR), Support Vector Machine (SVM), Random Forest (RF)~\cite{b9}, Gradient Boosted Trees (GBT), and XGBoost (XGB)~\cite{b8}, followed by simple averaging and stacked ensembles over the strongest tree-based models.
@@ -323,6 +332,13 @@ Path~1 regression is materially harder than classification because the target RA
 \label{fig:regression}
 \end{figure}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{11_residuals.png}
+\caption{Regression residual distributions. Path~1 shows a slight positive bias from NLOS ranging error; path~2 residuals are tightly clustered around zero, consistent with the analytically constrained target.}
+\label{fig:residuals}
+\end{figure}
+
 %======================================================================
 \section{Discussion}
 
@@ -391,6 +407,7 @@ The authors thank the contributors of the UWB-LOS-NLOS-Data-Set for making the d
 \bibitem{b13} N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, ``SMOTE: Synthetic minority over-sampling technique,'' \textit{J. Artif. Intell. Res.}, vol. 16, pp. 321--357, 2002.
 \bibitem{b14} K. He, X. Zhang, S. Ren, and J. Sun, ``Deep residual learning for image recognition,'' in \textit{Proc. IEEE CVPR}, 2016, pp. 770--778.
 \bibitem{b15} D. P. Kingma and J. Ba, ``Adam: A method for stochastic optimization,'' in \textit{Proc. ICLR}, 2015.
+\bibitem{b16} S. M. Lundberg and S.-I. Lee, ``A unified approach to interpreting model predictions,'' in \textit{Proc. NeurIPS}, 2017, pp. 4765--4774.
 \end{thebibliography}
 
 \end{document}
