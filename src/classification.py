@@ -24,6 +24,8 @@ from sklearn.ensemble import (
     HistGradientBoostingClassifier,
 )
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import (
     accuracy_score,
@@ -69,9 +71,12 @@ def train_classifiers(X_train, y_train, X_test, y_test):
 
     # ── 1. Logistic Regression — linear baseline ─────────────────────
     print("\n--- Logistic Regression ---")
-    lr = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=42)
-    lr.fit(X_train, y_train)
-    results["Logistic Regression"] = _evaluate(lr, X_test, y_test)
+    lr_pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        ('lr', LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)),
+    ])
+    lr_pipe.fit(X_train, y_train)
+    results['Logistic Regression'] = _evaluate(lr_pipe, X_test, y_test)
 
     # ── 2. SVM with RBF Kernel and GridSearchCV ──────────────────────
     # SVM is O(n²)-O(n³), so subsample training data for tractability.
@@ -82,21 +87,25 @@ def train_classifiers(X_train, y_train, X_test, y_test):
     X_train_svm, y_train_svm = X_train[svm_idx], y_train[svm_idx]
     print(f"  Subsampled to {svm_max_samples} training samples for SVM")
 
-    svm = SVC(kernel="rbf", probability=True, class_weight="balanced", random_state=42)
+    svm_pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        ('svm', SVC(kernel='rbf', probability=True,
+         class_weight='balanced', random_state=42)),
+    ])
     param_grid_svm = {
-        "C": [0.1, 1, 10],
-        "gamma": ["scale", "auto"],
+        'svm__C': [0.1, 1, 10],
+        'svm__gamma': ['scale', 'auto'],
     }
-    gs_svm = GridSearchCV(
-        svm, param_grid_svm, scoring="f1_weighted", cv=cv, n_jobs=-1, verbose=1
-    )
+    gs_svm = GridSearchCV(svm_pipe, param_grid_svm,
+                          scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
     gs_svm.fit(X_train_svm, y_train_svm)
     print(f"  Best params: {gs_svm.best_params_}")
     results["SVM (RBF)"] = _evaluate(gs_svm.best_estimator_, X_test, y_test)
 
     # ── 3. Random Forest with GridSearchCV ───────────────────────────
     print("\n--- Random Forest (GridSearchCV) ---")
-    rf = RandomForestClassifier(class_weight="balanced", random_state=42, n_jobs=-1)
+    rf = RandomForestClassifier(
+        class_weight="balanced", random_state=42, n_jobs=-1)
     param_grid = {
         "n_estimators": [300, 500],
         "max_depth": [20, None],
@@ -175,7 +184,8 @@ def _evaluate(model, X_test, y_test):
     y_prob = model.predict_proba(X_test)[:, 1]
 
     acc = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, target_names=["LOS", "NLOS"])
+    report = classification_report(
+        y_test, y_pred, target_names=["LOS", "NLOS"])
     cm = confusion_matrix(y_test, y_pred)
     fpr, tpr, _ = roc_curve(y_test, y_prob)
     roc_auc = auc(fpr, tpr)

@@ -26,6 +26,8 @@ import numpy as np
 from sklearn.linear_model import Ridge
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 try:
@@ -71,10 +73,15 @@ def train_regressors(X_train, y_train, X_test, y_test, path_name=""):
     results = {}
 
     # ── 1. Ridge Regression — L2-regularised linear baseline ────────────
+    # Ridge is scale-sensitive (L2 penalty), so scale features via Pipeline
     print(f"\n--- Ridge Regression ({path_name}) ---")
-    ridge = Ridge(alpha=1.0)
-    ridge.fit(X_train, y_train)
-    results["Ridge Regression"] = _evaluate_regressor(ridge, X_test, y_test)
+    ridge_pipe = Pipeline([
+        ('scaler', StandardScaler()),
+        ('ridge', Ridge(alpha=1.0)),
+    ])
+    ridge_pipe.fit(X_train, y_train)
+    results['Ridge Regression'] = _evaluate_regressor(
+        ridge_pipe, X_test, y_test)
 
     # ── 2. Random Forest Regressor with GridSearchCV ────────────────────
     print(f"\n--- Random Forest Regressor (GridSearchCV) ({path_name}) ---")

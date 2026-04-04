@@ -29,6 +29,7 @@ Libraries: sklearn (KMeans, PCA, silhouette_score, adjusted_rand_score),
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     silhouette_score,
     adjusted_rand_score,
@@ -73,10 +74,15 @@ def run_kmeans_analysis(X_train, y_train, X_test, y_test, random_state=42):
     """
     print("\n--- K-Means Clustering (k=2) ---")
 
-    # Fit K-Means on training data
+    # Scale features before K-Means (distance-based algorithm is scale-sensitive)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    # Fit K-Means on scaled training data
     kmeans = KMeans(n_clusters=2, random_state=random_state, n_init=10)
-    train_clusters = kmeans.fit_predict(X_train)
-    test_clusters = kmeans.predict(X_test)
+    train_clusters = kmeans.fit_predict(X_train_scaled)
+    test_clusters = kmeans.predict(X_test_scaled)
 
     # Resolve cluster-to-label mapping: try both assignments, pick the best
     # Assignment A: cluster 0 → LOS (0), cluster 1 → NLOS (1)
@@ -98,20 +104,20 @@ def run_kmeans_analysis(X_train, y_train, X_test, y_test, random_state=42):
     # Silhouette score: measures cluster separation quality [-1, 1]
     # +1 = perfectly separated, 0 = overlapping, -1 = misassigned
     # Use a subsample for efficiency on large datasets
-    n_sil = min(10000, len(X_train))
+    n_sil = min(10000, len(X_train_scaled))
     rng = np.random.RandomState(random_state)
-    sil_idx = rng.choice(len(X_train), n_sil, replace=False)
-    sil_train = silhouette_score(X_train[sil_idx], train_clusters[sil_idx])
-    sil_test = silhouette_score(X_test, kmeans.predict(X_test))
+    sil_idx = rng.choice(len(X_train_scaled), n_sil, replace=False)
+    sil_train = silhouette_score(X_train_scaled[sil_idx], train_clusters[sil_idx])
+    sil_test = silhouette_score(X_test_scaled, kmeans.predict(X_test_scaled))
 
     # Adjusted Rand Index: measures cluster-label agreement regardless of
     # label permutation. ARI = 1.0 means perfect agreement, 0 = random.
     ari = adjusted_rand_score(y_test, test_clusters)
 
-    # PCA projection for 2D visualisation
+    # PCA projection for 2D visualisation (on scaled data)
     pca = PCA(n_components=2, random_state=random_state)
-    pca.fit(X_train)
-    X_test_2d = pca.transform(X_test)
+    pca.fit(X_train_scaled)
+    X_test_2d = pca.transform(X_test_scaled)
 
     print(f"  Train accuracy (best mapping): {train_acc:.4f}")
     print(f"  Test accuracy  (best mapping): {best_acc:.4f}")
@@ -159,11 +165,15 @@ def run_elbow_silhouette_analysis(X_train, k_range=range(2, 11), random_state=42
     """
     print("\n--- Elbow / Silhouette Analysis ---")
 
+    # Scale features before clustering (distance-based)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+
     # Subsample for silhouette computation (O(n^2) complexity)
-    n_sil = min(10000, len(X_train))
+    n_sil = min(10000, len(X_train_scaled))
     rng = np.random.RandomState(random_state)
-    sil_idx = rng.choice(len(X_train), n_sil, replace=False)
-    X_sil = X_train[sil_idx]
+    sil_idx = rng.choice(len(X_train_scaled), n_sil, replace=False)
+    X_sil = X_train_scaled[sil_idx]
 
     k_values = list(k_range)
     inertias = []
@@ -210,8 +220,13 @@ def run_dbscan_analysis(X_train, X_test, y_test, random_state=42):
 
     print("\n--- DBSCAN Clustering (eps=2.0, min_samples=10) ---")
 
+    # Scale features before DBSCAN (distance-based)
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
     dbscan = DBSCAN(eps=2.0, min_samples=10)
-    test_labels = dbscan.fit_predict(X_test)
+    test_labels = dbscan.fit_predict(X_test_scaled)
 
     n_clusters = len(set(test_labels)) - (1 if -1 in test_labels else 0)
     n_noise = (test_labels == -1).sum()
@@ -229,8 +244,8 @@ def run_dbscan_analysis(X_train, X_test, y_test, random_state=42):
         accuracy = 0.0
 
     pca = PCA(n_components=2, random_state=random_state)
-    pca.fit(X_train)
-    X_test_2d = pca.transform(X_test)
+    pca.fit(X_train_scaled)
+    X_test_2d = pca.transform(X_test_scaled)
 
     print(f"  Clusters found: {n_clusters}")
     print(f"  Noise points: {n_noise} ({100*n_noise/len(test_labels):.1f}%)")
