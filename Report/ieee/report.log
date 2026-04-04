@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.3)  4 APR 2026 23:41
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.3)  4 APR 2026 23:44
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -295,12 +295,16 @@ Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \@lastruleclass=\count311
 \@thisrulewidth=\dimen195
 )
+(/usr/local/texlive/2026/texmf-dist/tex/latex/preprint/balance.sty
+Package: balance 1999/02/23 4.3 (PWD)
+\oldvsize=\dimen196
+)
 (/usr/local/texlive/2026/texmf-dist/tex/latex/multirow/multirow.sty
 Package: multirow 2024/11/12 v2.9 Span multiple rows of a table
 \multirow@colwidth=\skip57
 \multirow@cntb=\count312
 \multirow@dima=\skip58
-\bigstrutjot=\dimen196
+\bigstrutjot=\dimen197
 )
 (/usr/local/texlive/2026/texmf-dist/tex/latex/hyperref/hyperref.sty
 Package: hyperref 2026-01-29 v7.01p Hypertext links for LaTeX
@@ -356,7 +360,7 @@ Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
 Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO
 )
 )
-\@linkdim=\dimen197
+\@linkdim=\dimen198
 \Hy@linkcounter=\count315
 \Hy@pagecounter=\count316
 
@@ -389,7 +393,7 @@ Package hyperref Info: Bookmarks ON on input line 4468.
 Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
 )
 LaTeX Info: Redefining \url on input line 4807.
-\XeTeXLinkMargin=\dimen198
+\XeTeXLinkMargin=\dimen199
 
 (/usr/local/texlive/2026/texmf-dist/tex/generic/bitset/bitset.sty
 Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
@@ -399,8 +403,8 @@ Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO
 )
 ))
 \Fld@menulength=\count319
-\Field@Width=\dimen199
-\Fld@charsize=\dimen256
+\Field@Width=\dimen256
+\Fld@charsize=\dimen257
 Package hyperref Info: Hyper figures OFF on input line 6084.
 Package hyperref Info: Link nesting OFF on input line 6089.
 Package hyperref Info: Hyper index ON on input line 6092.
@@ -437,36 +441,36 @@ File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
 (./report.aux)
 \openout1 = `report.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 17.
-LaTeX Font Info:    ... okay on input line 17.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
 
 -- Lines per column: 56 (exact).
 (/usr/local/texlive/2026/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count326
-\scratchdimen=\dimen257
+\scratchdimen=\dimen258
 \scratchbox=\box59
 \nofMPsegments=\count327
 \nofMParguments=\count328
 \everyMPshowfont=\toks27
 \MPscratchCnt=\count329
-\MPscratchDim=\dimen258
+\MPscratchDim=\dimen259
 \MPnumerator=\count330
 \makeMPintoPDFobject=\count331
 \everyMPtoPDFconversion=\toks28
@@ -479,19 +483,19 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-Package hyperref Info: Link coloring OFF on input line 17.
+Package hyperref Info: Link coloring OFF on input line 18.
 
 (./report.out) (./report.out)
 \@outlinefile=\write3
 \openout3 = `report.out'.
 
-LaTeX Font Info:    Trying to load font information for U+msa on input line 31.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 32.
 
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 31.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 32.
 
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/amsfonts/umsb.fd
@@ -505,17 +509,17 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 File: plots/02_feature_distributions.png Graphic file (type png)
 <use plots/02_feature_distributions.png>
 Package pdftex.def Info: plots/02_feature_distributions.png  used on input line
- 102.
+ 103.
 (pdftex.def)             Requested size: 252.0pt x 143.05888pt.
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 117.
+put line 118.
 <plots/04_cir_examples.png, id=114, 1144.275pt x 425.9112pt>
 File: plots/04_cir_examples.png Graphic file (type png)
 <use plots/04_cir_examples.png>
-Package pdftex.def Info: plots/04_cir_examples.png  used on input line 139.
+Package pdftex.def Info: plots/04_cir_examples.png  used on input line 140.
 (pdftex.def)             Requested size: 252.0pt x 93.79173pt.
 LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 1
-68.
+69.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/psnfss/ot1pcr.fd
 File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
@@ -524,48 +528,48 @@ File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
 File: plots/06_feature_importance.png Graphic file (type png)
 <use plots/06_feature_importance.png>
 Package pdftex.def Info: plots/06_feature_importance.png  used on input line 17
-2.
+3.
 (pdftex.def)             Requested size: 252.0pt x 149.14801pt.
 <plots/20_shap_beeswarm.png, id=119, 552.1428pt x 673.5564pt>
 File: plots/20_shap_beeswarm.png Graphic file (type png)
 <use plots/20_shap_beeswarm.png>
-Package pdftex.def Info: plots/20_shap_beeswarm.png  used on input line 179.
+Package pdftex.def Info: plots/20_shap_beeswarm.png  used on input line 180.
 (pdftex.def)             Requested size: 120.95892pt x 147.55592pt.
 <plots/21_shap_bar.png, id=120, 566.115pt x 673.5564pt>
 File: plots/21_shap_bar.png Graphic file (type png)
 <use plots/21_shap_bar.png>
-Package pdftex.def Info: plots/21_shap_bar.png  used on input line 181.
+Package pdftex.def Info: plots/21_shap_bar.png  used on input line 182.
 (pdftex.def)             Requested size: 120.95892pt x 143.90736pt.
  [2 <./plots/02_feature_distributions.png> <./plots/04_cir_examples.png>]
 LaTeX Font Info:    Trying to load font information for OMS+ptm on input line 2
-35.
+36.
 
 (/usr/local/texlive/2026/texmf-dist/tex/latex/psnfss/omsptm.fd
 File: omsptm.fd 
 )
 LaTeX Font Info:    Font shape `OMS/ptm/m/n' in size <10> not available
-(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 235.
+(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 236.
 
-Underfull \hbox (badness 1540) in paragraph at lines 261--262
+Underfull \hbox (badness 1540) in paragraph at lines 262--263
 []\OT1/ptm/m/n/10 Table []IV[] sum-ma-rizes the su-per-vised clas-si-fi-ca-tion
  re-
  []
 
 
-Underfull \hbox (badness 1394) in paragraph at lines 284--285
+Underfull \hbox (badness 1394) in paragraph at lines 285--286
 []\OT1/ptm/m/n/10 Among di-rectly com-pa-ra-ble feature-engineered mod-els,
  []
 
 <plots/08_roc_curves.png, id=160, 493.845pt x 420.6114pt>
 File: plots/08_roc_curves.png Graphic file (type png)
 <use plots/08_roc_curves.png>
-Package pdftex.def Info: plots/08_roc_curves.png  used on input line 288.
+Package pdftex.def Info: plots/08_roc_curves.png  used on input line 289.
 (pdftex.def)             Requested size: 252.0pt x 214.6245pt.
 <plots/07_confusion_matrices.png, id=161, 1424.2008pt x 570.933pt>
 File: plots/07_confusion_matrices.png Graphic file (type png)
 <use plots/07_confusion_matrices.png>
 Package pdftex.def Info: plots/07_confusion_matrices.png  used on input line 29
-5.
+6.
 (pdftex.def)             Requested size: 252.0pt x 101.02115pt.
 [3 <./plots/06_feature_importance.png> <./plots/20_shap_beeswarm.png> <./plots/
 21_shap_bar.png>]
@@ -573,29 +577,33 @@ Package pdftex.def Info: plots/07_confusion_matrices.png  used on input line 29
 File: plots/10_predicted_vs_actual.png Graphic file (type png)
 <use plots/10_predicted_vs_actual.png>
 Package pdftex.def Info: plots/10_predicted_vs_actual.png  used on input line 3
-30.
+31.
 (pdftex.def)             Requested size: 252.0pt x 104.69003pt.
 <plots/11_residuals.png, id=189, 855.195pt x 355.0866pt>
 File: plots/11_residuals.png Graphic file (type png)
 <use plots/11_residuals.png>
-Package pdftex.def Info: plots/11_residuals.png  used on input line 337.
+Package pdftex.def Info: plots/11_residuals.png  used on input line 338.
 (pdftex.def)             Requested size: 252.0pt x 104.63043pt.
 <plots/09_model_comparison.png, id=191, 566.115pt x 349.305pt>
 File: plots/09_model_comparison.png Graphic file (type png)
 <use plots/09_model_comparison.png>
-Package pdftex.def Info: plots/09_model_comparison.png  used on input line 353.
+Package pdftex.def Info: plots/09_model_comparison.png  used on input line 354.
 
 (pdftex.def)             Requested size: 252.0pt x 155.48553pt.
 <plots/13_attention_map.png, id=193, 1437.6912pt x 569.0058pt>
 File: plots/13_attention_map.png Graphic file (type png)
 <use plots/13_attention_map.png>
-Package pdftex.def Info: plots/13_attention_map.png  used on input line 364.
+Package pdftex.def Info: plots/13_attention_map.png  used on input line 365.
 (pdftex.def)             Requested size: 252.0pt x 99.73378pt.
  [4 <./plots/08_roc_curves.png> <./plots/07_confusion_matrices.png>]
-Underfull \hbox (badness 1824) in paragraph at lines 388--389
+Underfull \hbox (badness 1824) in paragraph at lines 389--390
 []\OT1/ptm/m/n/10 Several di-rec-tions merit fur-ther in-ves-ti-ga-tion: (1) En
 -
  []
+
+
+Package balance Warning: You have called \balance in second column
+(balance)                Columns might not be balanced.
 
 [5 <./plots/10_predicted_vs_actual.png> <./plots/11_residuals.png> <./plots/09_
 model_comparison.png>]
@@ -610,9 +618,7 @@ Before submitting the final camera ready copy, remember to:
  uses only Type 1 fonts and that every step in the generation
  process uses the appropriate paper size.
 
-[6
-
- <./plots/13_attention_map.png>] (./report.aux)
+[6 <./plots/13_attention_map.png>] (./report.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -621,10 +627,10 @@ Package rerunfilecheck Info: File `report.out' has not changed.
 (rerunfilecheck)             Checksum: A4E73FAD1FA5B7138603E7C4725F9533;2810.
  ) 
 Here is how much of TeX's memory you used:
- 11843 strings out of 467525
- 184354 string characters out of 5418983
- 621795 words of memory out of 5000000
- 40499 multiletter control sequences out of 15000+600000
+ 11873 strings out of 467525
+ 185050 string characters out of 5418983
+ 621230 words of memory out of 5000000
+ 40525 multiletter control sequences out of 15000+600000
  672079 words of font info for 129 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,10n,79p,1226b,578s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -647,7 +653,7 @@ xmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/local/texlive/2026/texmf-dist
 e1/urw/times/utmbi8a.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/urw/ti
 mes/utmr8a.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/urw/times/utmri8
 a.pfb>
-Output written on report.pdf (6 pages, 1640360 bytes).
+Output written on report.pdf (6 pages, 1640353 bytes).
 PDF statistics:
  339 PDF objects out of 1000 (max. 8388607)
  268 compressed objects within 3 object streams
