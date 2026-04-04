@@ -1,0 +1,82 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{b1}
+\citation{b2}
+\citation{b3,b4}
+\citation{b5}
+\citation{b6}
+\citation{b10,b11}
+\citation{b7}
+\@writefile{toc}{\contentsline {section}{\numberline {I}Introduction}{1}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {II}Dataset and Data Preparation}{1}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-A}}Dataset Description}{1}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {II-B}}Data Preparation}{1}{subsection.2.2}\protected@file@percent }
+\citation{b9}
+\citation{b8}
+\citation{b14}
+\@writefile{lot}{\contentsline {table}{\numberline {I}{\ignorespaces Dataset Features}}{2}{table.1}\protected@file@percent }
+\newlabel{tab:features}{{I}{2}{Dataset Features}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Distribution of scalar features by LOS (blue) and NLOS (orange) class. Features such as CIR\_PWR and FP\_AMP1 show strong class separability.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:distributions}{{1}{2}{Distribution of scalar features by LOS (blue) and NLOS (orange) class. Features such as CIR\_PWR and FP\_AMP1 show strong class separability}{figure.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {III}Proposed Methodology}{2}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-A}}Two-Path Extraction}{2}{subsection.3.1}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Two-Path Peak Detection}}{2}{algorithm.1}\protected@file@percent }
+\newlabel{alg:peak}{{1}{2}{Two-Path Extraction}{algorithm.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Example CIR waveforms showing detected first path (triangle) and second path (circle) for LOS and NLOS conditions.}}{2}{figure.2}\protected@file@percent }
+\newlabel{fig:cir}{{2}{2}{Example CIR waveforms showing detected first path (triangle) and second path (circle) for LOS and NLOS conditions}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-B}}Feature Engineering Pipeline}{2}{subsection.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {III-C}}End-to-End Deep Learning Pipeline}{2}{subsection.3.3}\protected@file@percent }
+\citation{b15}
+\citation{b12}
+\citation{b13}
+\@writefile{lot}{\contentsline {table}{\numberline {II}{\ignorespaces Key local per-path engineered features (8 of the 13 per-path descriptors)}}{3}{table.2}\protected@file@percent }
+\newlabel{tab:path_features}{{II}{3}{Key local per-path engineered features (8 of the 13 per-path descriptors)}{table.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate.}}{3}{figure.3}\protected@file@percent }
+\newlabel{fig:importance}{{3}{3}{Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate}{figure.3}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {IV}Experimental Results}{3}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-A}}Classification Results}{3}{subsection.4.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces CNN-Transformer Hyperparameters}}{3}{table.3}\protected@file@percent }
+\newlabel{tab:hyperparams}{{III}{3}{CNN-Transformer Hyperparameters}{table.3}{}}
+\@writefile{loa}{\contentsline {algorithm}{\numberline {2}{\ignorespaces CNN-Transformer Training}}{3}{algorithm.2}\protected@file@percent }
+\newlabel{alg:training}{{2}{3}{End-to-End Deep Learning Pipeline}{algorithm.2}{}}
+\citation{b3,b4}
+\@writefile{lot}{\contentsline {table}{\numberline {IV}{\ignorespaces Classification Performance}}{4}{table.4}\protected@file@percent }
+\newlabel{tab:cls_results}{{IV}{4}{Classification Performance}{table.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values.}}{4}{figure.4}\protected@file@percent }
+\newlabel{fig:roc}{{4}{4}{ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {IV-B}}Distance Estimation Results}{4}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {V}Discussion}{4}{section.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-A}}ML vs. Deep Learning Comparison}{4}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Confusion matrices for selected baseline classification models.}}{4}{figure.5}\protected@file@percent }
+\newlabel{fig:confusion}{{5}{4}{Confusion matrices for selected baseline classification models}{figure.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {V}{\ignorespaces Distance Estimation Performance}}{4}{table.5}\protected@file@percent }
+\newlabel{tab:reg_results}{{V}{4}{Distance Estimation Performance}{table.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-B}}Interpretability via Attention}{4}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {V-C}}Error Analysis}{4}{subsection.5.3}\protected@file@percent }
+\bibcite{b1}{1}
+\bibcite{b2}{2}
+\bibcite{b3}{3}
+\bibcite{b4}{4}
+\bibcite{b5}{5}
+\bibcite{b6}{6}
+\bibcite{b7}{7}
+\bibcite{b8}{8}
+\bibcite{b9}{9}
+\bibcite{b10}{10}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Predicted vs. actual distance for path 1 (left) and path 2 (right) regression models.}}{5}{figure.6}\protected@file@percent }
+\newlabel{fig:regression}{{6}{5}{Predicted vs. actual distance for path 1 (left) and path 2 (right) regression models}{figure.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Comparison of classification metrics across all models.}}{5}{figure.7}\protected@file@percent }
+\newlabel{fig:comparison}{{7}{5}{Comparison of classification metrics across all models}{figure.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {VI}Conclusion}{5}{section.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Transformer attention weights overlaid on a CIR waveform. High attention concentrates near the first path and multipath components.}}{5}{figure.8}\protected@file@percent }
+\newlabel{fig:attention}{{8}{5}{Transformer attention weights overlaid on a CIR waveform. High attention concentrates near the first path and multipath components}{figure.8}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {\mbox  {VI-A}}Future Work}{5}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{References}{5}{section*.2}\protected@file@percent }
+\bibcite{b11}{11}
+\bibcite{b12}{12}
+\bibcite{b13}{13}
+\bibcite{b14}{14}
+\bibcite{b15}{15}
+\gdef \@abspage@last{6}

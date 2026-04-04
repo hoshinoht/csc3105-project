@@ -8,8 +8,8 @@ __pycache__/
 .ipynb_checkpoints/
 plots/
 
-CLAUDE.md
-/.claude/*
 
 /dataset/**
 CSC3105_Mini_Project_2026.pdf
+
+.opencode/**

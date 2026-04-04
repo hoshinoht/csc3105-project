@@ -1,7 +1,23 @@
 ---
 title: "LOS/NLOS UWB Wireless Signal Classification for Indoor Precise Positioning"
 subtitle: "CSC3105 Data Analytics and AI - Mini-Project Report"
-author: "Lab P1, Group 4 - Po Haoting, Travis Neo Kuang Yi, Chiang Porntep, Nico Caleb Lim, Dui Ru En Joshua"
+group: "Lab P1, Group 4"
+authors:
+  - name: Po Haoting
+    sit-id: "2401280"
+    glasgow-id: "3070642P"
+  - name: Travis Neo Kuang Yi
+    sit-id: "2401250"
+    glasgow-id: "3070641N"
+  - name: Chiang Porntep
+    sit-id: "2403352"
+    glasgow-id: "3070566C"
+  - name: Nico Caleb Lim
+    sit-id: "2401536"
+    glasgow-id: "3070658L"
+  - name: Dui Ru En Joshua
+    sit-id: "2402201"
+    glasgow-id: "3070683D"
 date: "2026"
 institute: "University of Glasgow / Singapore Institute of Technology"
 titlepage: true
@@ -50,14 +66,14 @@ This project addresses two interrelated tasks:
 
 2. **Distance Estimation**: For each of the two extracted paths, estimate the physical propagation distance (in meters), enabling accurate position calculation even in the presence of multipath.
 
-The **two-path labeling rule** used in this report follows a standard UWB propagation assumption: when an LOS component exists, it is the earliest-arriving path. Under this assumption, if Path 1 (the first-arriving peak) is classified as LOS, then Path 2 (the next strongest peak) is labeled NLOS. If Path 1 is itself NLOS (direct path blocked), then Path 2 is also labeled NLOS.
+The **two-path labeling rule** used in this report follows a standard UWB propagation assumption: when an LOS component exists, it is the earliest-arriving path. Under this assumption, if Path 1 (the first-arriving peak) is classified as LOS, then Path 2 (the next strongest peak) is labeled NLOS. If Path 1 is itself NLOS (direct path blocked), then Path 2 is also labeled NLOS. In effect, Path 2 is always labeled NLOS under this rule.
 
 ## Dataset
 
 The dataset originates from Bregar and Mohorčič [7] and was collected using Decawave DWM1000 UWB modules across **7 distinct indoor environments** at the Jožef Stefan Institute, Slovenia. The dataset comprises:
 
 - **42,000 measurements**: 21,000 LOS and 21,000 NLOS (perfectly balanced), pre-randomized across environments
-- **14 scalar features**: RANGE, FP_IDX, FP_AMP1, FP_AMP2, FP_AMP3, STDEV_NOISE, CIR_PWR, MAX_NOISE, RXPACC, CH, FRAME_LEN, PREAM_LEN, BITRATE, PRFR
+- **14 scalar features**: RANGE (also used as the regression target for distance estimation), FP_IDX, FP_AMP1, FP_AMP2, FP_AMP3, STDEV_NOISE, CIR_PWR, MAX_NOISE, RXPACC, CH, FRAME_LEN, PREAM_LEN, BITRATE, PRFR
 - **1016 CIR samples**: Absolute channel impulse response amplitudes at 1 ns resolution (columns CIR0 through CIR1015)
 - **Target label**: NLOS (1 = NLOS, 0 = LOS)
 
@@ -65,7 +81,7 @@ The dataset originates from Bregar and Mohorčič [7] and was collected using De
 
 We propose a **dual-pipeline architecture** that combines classical machine learning on hand-crafted features with end-to-end deep learning on raw CIR waveforms:
 
-- **Pipeline 1 (Feature-Engineered ML)**: Extract 25 physics-motivated features per path, then train and compare Logistic Regression, Random Forest, Gradient Boosted Trees, and XGBoost classifiers.
+- **Pipeline 1 (Feature-Engineered ML)**: Extract 25 physics-motivated features per path, then train and compare Logistic Regression, Random Forest, Gradient Boosted Trees (GBT), and XGBoost classifiers.
 - **Pipeline 2 (End-to-End DL)**: Feed the raw 1016-sample CIR directly into a hybrid CNN+Transformer architecture that learns its own representations.
 
 The feature-engineered ML pipeline is evaluated inline on the expanded two-path tabular benchmark, while the CNN+Transformer results are reported from a separate pre-computed raw-CIR pipeline on the original sample split. This design supports a qualitative comparison between domain-engineered and end-to-end representations, but it is not a strict controlled benchmark.
@@ -86,7 +102,7 @@ This extension requires solving three sub-problems simultaneously:
 2. **Feature Extraction**: Compute discriminative features for each detected peak independently
 3. **Label Assignment**: Determine the correct NLOS label for each path using the two-path rule
 
-The expanded dataset has a natural **class imbalance**: after preprocessing, 41,996 usable measurements remain, and the two-path expansion therefore yields **83,992 rows**. Path 2 is always labeled NLOS (1), while Path 1 inherits the original label (roughly 50% LOS, 50% NLOS). The resulting expanded class distribution is approximately 25% LOS / 75% NLOS. This imbalance is handled through class-weighted loss functions in the classical ML pipeline; the deep learning results come from a separate raw-CIR workflow on the original split and should be interpreted separately.
+The expanded dataset has a natural **class imbalance**: after preprocessing, 41,996 usable measurements remain, and the two-path expansion therefore yields **83,992 rows**. Path 2 is always labeled NLOS (1), while Path 1 inherits the original label (roughly 50% LOS, 50% NLOS). The resulting expanded class distribution is 25% LOS / 75% NLOS. This imbalance is handled through class-weighted loss functions in the classical ML pipeline; the deep learning results come from a separate raw-CIR workflow on the original split and should be interpreted separately.
 
 ## The 3D Analytics Process
 
@@ -100,7 +116,7 @@ The project follows the standard data analytics pipeline:
 
 **Why hand-crafted features?** Physics-motivated features such as rise time, kurtosis, and energy ratio encode known differences between LOS and NLOS CIR profiles reported in prior UWB ranging and NLOS-identification work [3], [4]. They are interpretable, computationally efficient, and allow incorporation of domain expertise.
 
-**Why CNN + Transformer?** Convolutional layers capture local waveform patterns (peak shapes, rise/decay profiles), while the Transformer encoder captures long-range dependencies across the entire 1016-sample CIR (e.g., energy distribution between the first path and later multipath components) [6]. This combination is well-suited to the sequential structure of CIR data.
+**Why CNN + Transformer?** Convolutional layers capture local waveform patterns (peak shapes, rise/decay profiles), while the Transformer encoder captures long-range dependencies across the entire 1016-sample CIR (e.g., energy distribution between the first path and later multipath components) [6], [10], [11]. This combination is well-suited to the sequential structure of CIR data, as demonstrated by recent transformer-based UWB NLOS detection work [10], [11].
 
 **Why K-Means clustering?** An unsupervised baseline tests whether the engineered feature space contains LOS/NLOS structure without label information. In the evaluated notebook run, K-Means is applied directly to the expanded two-path 25-feature train/test matrices used by the tabular classifiers; no additional scaling step is applied inside the clustering module. The resulting metrics are therefore interpreted as a weak, imbalanced-set baseline rather than a balanced Path-1-only clustering benchmark.
 
@@ -207,10 +223,10 @@ The first layer applies three parallel 1D convolutions with kernel sizes 3, 7, a
 
 Two residual CNN blocks progressively down-sample the feature sequence:
 
-- Block 1: 32 to 64 channels, kernel=5, MaxPool(2): reduces sequence length from 508 to 254
+- Block 1: 32 to 64 channels, kernel=5, MaxPool(2): reduces sequence length from 508 to 254 (an initial MaxPool(2) reduces the 1016-sample input to 508 before the residual blocks)
 - Block 2: 64 to 128 channels, kernel=3, MaxPool(2): reduces to 127
 
-Each residual block applies Conv→BN→ReLU→Conv→BN, adds the (projected) input shortcut, applies ReLU, and pools. Residual connections improve gradient flow for deeper networks.
+Each residual block applies Conv→BN→ReLU→Conv→BN, adds the (projected) input shortcut, applies ReLU, and pools. Residual connections [14] improve gradient flow for deeper networks.
 
 ### Transformer Encoder
 
@@ -224,9 +240,9 @@ Global average pooling collapses the 127-step sequence to a single 128-dimension
 
 ### Training Details
 
-- **Optimizer**: Adam with initial learning rate 1e-3
+- **Optimizer**: Adam [15] with initial learning rate 1e-3
 - **Loss**: Binary cross-entropy with logits (BCEWithLogitsLoss)
-- **Label smoothing**: Targets are soft-labeled (0.95 for positive, 0.025 for negative) to reduce overconfidence
+- **Label smoothing**: Targets are soft-labeled using standard binary label smoothing with ε = 0.05 (0.975 for positive, 0.025 for negative) to reduce overconfidence [12]
 - **Learning rate schedule**: ReduceLROnPlateau (patience=2, factor=0.5)
 - **Early stopping**: Patience=5 epochs on validation loss
 - **Batch size**: 256
@@ -244,7 +260,15 @@ K-Means with k=2 is applied to the expanded two-path 25-feature dataset used by 
 - **Silhouette score**: Measures cluster compactness and separation (range [-1, 1])
 - **Adjusted Rand Index (ARI)**: Label-permutation-invariant measure of cluster-label agreement
 
-Under this evaluated expanded-set configuration, clustering remains **weak**: K-Means achieves **0.5906 test accuracy** with **ARI = 0.0269**, indicating only very limited recovery of the supervised LOS/NLOS structure. In the evaluated configuration, DBSCAN does not recover a usable partition and effectively returns **0 clusters** after noise assignment. PCA is still used to project the 25-dimensional feature space to 2D for visualization (`plots/14_clustering.png`), but the resulting plot should be read as evidence of substantial overlap rather than strong unsupervised separation.
+Under this evaluated expanded-set configuration, clustering remains **weak**: K-Means achieves **0.5906 test accuracy** with **ARI = 0.0269**, indicating only very limited recovery of the supervised LOS/NLOS structure. PCA is used to project the 25-dimensional feature space to 2D for visualization (`plots/14_clustering.png`), but the resulting plot should be read as evidence of substantial overlap rather than strong unsupervised separation.
+
+### DBSCAN
+
+Density-Based Spatial Clustering of Applications with Noise (DBSCAN) is applied as a complementary unsupervised method that, unlike K-Means, does not require specifying the number of clusters in advance. DBSCAN groups densely connected points into clusters and marks isolated points as noise, enabling discovery of clusters with arbitrary shapes. This makes it better suited to detecting non-convex class boundaries that K-Means, with its spherical cluster assumption, cannot represent.
+
+Features are standardized internally with `StandardScaler` before clustering, since DBSCAN relies on Euclidean distance for neighborhood queries. The algorithm is configured with `eps=2.0` (maximum neighborhood radius) and `min_samples=10` (minimum points to form a dense core region). Accuracy is evaluated on non-noise samples only, using the optimal cluster-to-label mapping (same approach as K-Means). PCA is used to project the feature space to 2D for visualization alongside the K-Means results.
+
+In the evaluated configuration, DBSCAN does not recover a usable partition and effectively returns **0 clusters** after noise assignment, which is consistent with the weak unsupervised separation narrative.
 
 ## Ensemble Methods
 
@@ -315,7 +339,7 @@ Output: Trained model f_theta with best validation weights
 
 3.  For epoch = 1 to 50:
 4.      For each mini-batch B of size 256:
-5.          y_B_smooth ← y_B * 0.95 + (1 - y_B) * 0.025   # label smoothing
+5.          y_B_smooth ← y_B * 0.95 + 0.025   # label smoothing (ε = 0.05)
 6.          logits ← f_theta(CIR_B, scalars_B)
 7.          L_train ← BCEWithLogitsLoss(logits, y_B_smooth)
 8.          Backpropagate L_train; update theta via Adam
@@ -343,14 +367,17 @@ Output: Trained model f_theta with best validation weights
 Input:  7 CSV files from 7 indoor environments
 Output: Classification results, regression results, visualizations
 
-1.  Load 7 CSV files; concatenate to 42,000 x 1031 DataFrame
+1.  Load 7 CSV files; concatenate to 42,000 x 1032 DataFrame
 
 2.  Preprocessing:
-    a. Drop constant columns CH, BITRATE, PRFR, ENV_ID (retain 11 scalar model features)
-    b. Divide all CIR columns by RXPACC (per-preamble-pulse normalization)
+    a. Drop constant columns CH, BITRATE, PRFR, ENV_ID
+       (retain 11 scalar model features)
+    b. Divide all CIR columns by RXPACC
+       (per-preamble-pulse normalization)
     c. Replace NaN/Inf with 0
-    d. Stratified 80/20 train/test split (approximately 33,596 / 8,400)
-    e. Fit StandardScaler on the training split and transform train/test scalar features
+    d. Stratified 80/20 train/test split (33,596 / 8,400)
+    e. Fit StandardScaler on training split;
+       transform train/test scalar features
 
 3.  Two-path peak detection (Algorithm 1) on 41,996 usable CIRs
     -> path1_idx, path1_amp, path2_idx, path2_amp
@@ -376,15 +403,18 @@ Output: Classification results, regression results, visualizations
 
 9.  Ensemble methods:
     a. Simple average of RF + GBT + XGBoost probabilities
-    b. Stacked generalization (LR meta-learner on cross-val predictions)
+    b. Stacked generalization
+       (LR meta-learner on cross-val predictions)
 
 10. Distance estimation (4 regressors each):
     a. Path 1: 25-feature input, target = RANGE
-    b. Path 2: 25-feature + RANGE input, target = RANGE + offset * 0.2998
+    b. Path 2: 25-feature + RANGE input,
+       target = RANGE + offset * 0.2998
 
-11. Report classification, regression, clustering, and visualization outputs with cross-pipeline caveats where needed
+11. Report classification, regression, clustering,
+    and visualization outputs
 
-12. Generate 14 visualizations (data preparation, mining, results)
+12. Generate 14 visualizations
 ```
 
 ---
@@ -433,11 +463,23 @@ Train and test indices are preserved and applied consistently to both the usable
 
 After peak detection and feature engineering, each usable sample becomes **two rows** in the expanded dataset: one for Path 1, one for Path 2. This produces an **83,992-row** dataset with class counts **20,999 LOS** and **62,993 NLOS**, i.e. approximately a 25/75 LOS/NLOS imbalance.
 
+## Engineered Feature Scaling for Scale-Sensitive Models
+
+The two-path expansion produces a 25-feature matrix where features span vastly different magnitude ranges. For example, `CIR_PWR` takes values in the hundreds of thousands while `energy_ratio` is bounded in [0, 1] and `rise_time` typically falls between 1 and 10 samples. This disparity has no impact on tree-based models (Random Forest, HistGradientBoosting, XGBoost), which partition data using threshold comparisons on individual features independently and are therefore scale-invariant by design.
+
+However, three algorithm families in the pipeline are directly affected:
+
+- **SVM (RBF Kernel)**: Similarity between samples is computed via the RBF kernel $K(x, x') = \exp(-\gamma \|x - x'\|^2)$, where $\|x - x'\|^2 = \sum_{j=1}^{25}(x_j - x'_j)^2$. A single feature such as `CIR_PWR` differing by 10,000 units contributes $\mathcal{O}(10^8)$ to this sum, rendering all remaining features negligible. Without scaling, the SVM kernel becomes a function of `CIR_PWR` alone.
+- **Logistic Regression**: Gradient descent weight updates are proportional to feature magnitude. Large-scale features dominate gradient steps, causing weights for physically meaningful small-scale features (e.g., `energy_ratio`, `rise_time`) to converge slowly or not at all.
+- **K-Means and DBSCAN**: Both assign cluster membership using Euclidean distance. Unscaled high-magnitude features dictate cluster geometry, producing groupings that reflect `CIR_PWR` ranges rather than the LOS/NLOS signal structure.
+
+Rather than globally scaling the engineered feature matrix (which would be unnecessary for tree models and would obscure physical units in feature importance plots), scaling is applied internally per model using `sklearn.pipeline.Pipeline`. For clustering functions, a `StandardScaler` is fit on the training partition internally before any distance computation. This ensures scale-sensitive models receive properly normalised inputs while tree-based model inputs remain in their original physical units. The tabular ML pipeline is implemented using scikit-learn [18], and the deep learning pipeline uses PyTorch [19].
+
 ## Synthetic Data Augmentation
 
 Two augmentation strategies are explored and compared against the non-augmented baseline:
 
-**SMOTE (Synthetic Minority Over-Sampling Technique)** is applied to the ML training feature vectors. For each minority-class (LOS) sample, SMOTE selects one of its k=5 nearest neighbors in 25-dimensional feature space and generates a new synthetic sample by interpolating between them:
+**SMOTE (Synthetic Minority Over-Sampling Technique)** [13] is applied to the ML training feature vectors. For each minority-class (LOS) sample, SMOTE selects one of its k=5 nearest neighbors in 25-dimensional feature space and generates a new synthetic sample by interpolating between them:
 
 $$x_{\mathrm{synth}} = x_{\mathrm{orig}} + \lambda \cdot (x_{\mathrm{neighbor}} - x_{\mathrm{orig}}), \quad \lambda \sim \mathrm{Uniform}(0, 1)$$
 
@@ -489,7 +531,7 @@ After GridSearchCV, the best Random Forest configuration achieves on the expande
 - **Accuracy**: 0.9386
 - **AUC**: 0.9815
 
-The significant accuracy improvement over Logistic Regression demonstrates the importance of non-linear decision boundaries. The ensemble of trees naturally handles feature interactions (e.g., the joint combination of `energy_ratio` and `peak_to_noise`) that linear models cannot capture. Feature importances extracted from the trained forest provide interpretable insight into which features matter most.
+The accuracy improvement over Logistic Regression suggests the importance of non-linear decision boundaries. The ensemble of trees naturally handles feature interactions (e.g., the joint combination of `energy_ratio` and `peak_to_noise`) that linear models cannot capture. Feature importances extracted from the trained forest provide interpretable insight into which features matter most.
 
 ### Gradient Boosted Trees
 
@@ -541,13 +583,13 @@ Path 1 regression uses the 25 per-path features with the original RANGE as targe
 - **Gradient Boosted Regressor**: RMSE = 1.3872 m, R² = 0.6617
 - **XGBoost Regressor**: RMSE = 1.3726 m, R² = 0.6688
 
-Path 1 regression is challenging because the target RANGE value includes NLOS bias for NLOS samples: the measured range is systematically larger than the true distance, and the magnitude of the bias varies by environment.
+Path 1 regression is challenging because the target RANGE value includes NLOS bias for NLOS samples [3], [4]: the measured range is systematically larger than the true distance, and the magnitude of the bias varies by environment.
 
 ### Path 2 Distance Estimation
 
 Path 2 regression uses the 25 per-path features plus the original RANGE measurement as an additional feature:
 
-- **Ridge Regression**: RMSE = 0.0000 m, R² = 1.0000
+- **Ridge Regression**: RMSE = 0.0000 m, R² = 1.0000 *(see note below)*
 - **Random Forest Regressor**: RMSE = 0.4696 m, R² = 0.9997
 - **Gradient Boosted Regressor**: RMSE = 0.2889 m, R² = 0.9999
 - **XGBoost Regressor**: RMSE = 1.2176 m, R² = 0.9981
@@ -734,7 +776,7 @@ This chart summarizes path-wise RMSE, MAE, and $R^2$, reinforcing that Path 2 is
 
 ![t-SNE versus PCA Feature Embedding](../../plots/18_tsne_embedding.png)
 
-The embedding comparison shows partial class structure but substantial overlap, which aligns with the weak unsupervised clustering metrics.
+The t-SNE [17] and PCA embedding comparison shows partial class structure but substantial overlap, which aligns with the weak unsupervised clustering metrics.
 
 ### Plot 19: Elbow and Silhouette Analysis
 
@@ -746,7 +788,7 @@ The elbow and silhouette curves provide additional context for selecting $k=2$ i
 
 ![SHAP Beeswarm Feature Impact](../../plots/20_shap_beeswarm.png)
 
-SHAP distributions confirm that path amplitude, path index, energy ratio, and peak-to-noise dominate model decisions.
+SHAP [16] distributions confirm that path amplitude, path index, energy ratio, and peak-to-noise dominate model decisions.
 
 ### Plot 21: SHAP Mean Importance Bar Chart
 
@@ -821,10 +863,12 @@ Conclusion: augmentation effects are representation-dependent in this project. S
 
 | Model                   | Path 1 RMSE | Path 1 R² | Path 2 RMSE | Path 2 R² |
 | ----------------------- | ----------- | --------- | ----------- | --------- |
-| Ridge Regression        | 1.6164 m    | 0.5407    | 0.0000 m    | 1.0000    |
+| Ridge Regression        | 1.6164 m    | 0.5407    | 0.0000 m\*  | 1.0000\*  |
 | Random Forest Regressor | 1.3706 m    | 0.6698    | 0.4696 m    | 0.9997    |
 | GBT Regressor           | 1.3872 m    | 0.6617    | 0.2889 m    | 0.9999    |
 | XGBoost Regressor       | 1.3726 m    | 0.6688    | 1.2176 m    | 0.9981    |
+
+\* Path 2 Ridge achieves perfect scores because the target is a near-deterministic linear function of supplied input features; this is a consistency check, not a learning result.
 
 **Path 1**: The R² values around 0.54-0.67 indicate moderate predictive accuracy. The primary challenge is that for NLOS samples, the measured RANGE (which is the regression target) itself includes an NLOS bias: the model must predict a biased quantity, which limits achievable accuracy.
 
@@ -1051,7 +1095,7 @@ def train_regressors(X_train, y_train, X_test, y_test, path_name=""):
 ## src/synthetic_data.py - SMOTE and CIR Augmentation
 
 ```python
-def apply_smote(X_train, y_train, target_ratio=1.0, k_neighbors=5, random_state=42):
+def apply_smote(X_train, y_train, target_ratio=1.0, k_neighbors=5, random_state=42):  # called with target_ratio=0.5
     target_count = int(majority_count * target_ratio)
     n_synthetic = max(0, target_count - minority_count)
 
@@ -1141,7 +1185,7 @@ def scale_and_split(df, test_size=0.2, random_state=42):
 
 ---
 
-# Interesting Aspects and Observations
+# Discussion
 
 ## Assumption Analysis
 
@@ -1157,7 +1201,7 @@ def scale_and_split(df, test_size=0.2, random_state=42):
 
 **Prominence-based Path 2 selection**: Using scipy's `find_peaks` with a prominence constraint is more robust than naive amplitude-based selection. Prominence measures a peak relative to its surrounding baseline rather than absolutely, making it invariant to slow-varying CIR envelope changes and reducing false path detections from noise fluctuations.
 
-**Label smoothing (0.95/0.025)**: Applied to the CNN+Transformer training targets. Rather than optimizing for hard 0/1 labels, the model is trained toward 0.025 (negative) and 0.95 (positive). This prevents overconfidence and improves calibration, particularly important for the ensemble fusion where the DL model's probabilities are combined with ML model probabilities.
+**Label smoothing (ε = 0.05)**: Applied to the CNN+Transformer training targets using standard binary label smoothing [12]. Rather than optimizing for hard 0/1 labels, the model is trained toward 0.025 (negative) and 0.975 (positive). This prevents overconfidence and improves calibration, particularly important for the ensemble fusion where the DL model's probabilities are combined with ML model probabilities.
 
 ## Interpreting the DL-versus-ML Comparison
 
@@ -1175,11 +1219,11 @@ The transformer's self-attention mechanism often assigns weight to CIR regions n
 
 | Member              | SIT ID  | Glasgow ID | Contributions                              |
 | ------------------- | ------- | ---------- | ------------------------------------------ |
-| Po Haoting          | 2401280 | 3070642P   | Training of the CNN Models for Evalulation |
-| Travis Neo Kuang Yi | 2401250 | 3070641N   | [To be filled in]                          |
-| Chiang Porntep      | 2403352 | 3070566C   | [To be filled in]                          |
-| Nico Caleb Lim      | 2401536 | 3070658L   | [To be filled in]                          |
-| Dui Ru En Joshua    | 2402201 | 3070683D   | [To be filled in]                          |
+| Po Haoting          | 2401280 | 3070642P   | Deep Learning and Machine Learning Models  |
+| Travis Neo Kuang Yi | 2401250 | 3070641N   | Data Preprocessing                         |
+| Chiang Porntep      | 2403352 | 3070566C   | Data Preprocessing                         |
+| Nico Caleb Lim      | 2401536 | 3070658L   | Classification                             |
+| Dui Ru En Joshua    | 2402201 | 3070683D   | Classification and Clustering              |
 
 ---
 
@@ -1206,3 +1250,19 @@ The transformer's self-attention mechanism often assigns weight to CIR regions n
 [10] S. Tomović, K. Bregar, T. Javornik, and I. Radusinović, "Transformer-based NLoS detection in UWB localization systems," in *Proceedings of the 30th Telecommunications Forum (TELFOR)*, 2022, doi: 10.1109/TELFOR56187.2022.9983765.
 
 [11] H.-J. Hwang, S.-G. Jeong, and W.-J. Hwang, "Ultrawideband non-line-of-sight classification using transformer-convolutional neural networks," *IEEE Access*, 2025, doi: 10.1109/ACCESS.2025.3568830.
+
+[12] C. Szegedy, V. Vanhoucke, S. Ioffe, J. Shlens, and Z. Wojna, "Rethinking the Inception architecture," in *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 2818–2826, 2016.
+
+[13] N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, "SMOTE: Synthetic Minority Over-sampling Technique," *Journal of Artificial Intelligence Research*, vol. 16, pp. 321–357, 2002.
+
+[14] K. He, X. Zhang, S. Ren, and J. Sun, "Deep residual learning for image recognition," in *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 770–778, 2016.
+
+[15] D. P. Kingma and J. Ba, "Adam: A method for stochastic optimization," in *Proceedings of the 3rd International Conference on Learning Representations (ICLR)*, 2015.
+
+[16] S. M. Lundberg and S.-I. Lee, "A unified approach to interpreting model predictions," in *Advances in Neural Information Processing Systems (NeurIPS)*, pp. 4765–4774, 2017.
+
+[17] L. van der Maaten and G. Hinton, "Visualizing data using t-SNE," *Journal of Machine Learning Research*, vol. 9, pp. 2579–2605, 2008.
+
+[18] F. Pedregosa *et al.*, "Scikit-learn: Machine learning in Python," *Journal of Machine Learning Research*, vol. 12, pp. 2825–2830, 2011.
+
+[19] A. Paszke *et al.*, "PyTorch: An imperative style, high-performance deep learning library," in *Advances in Neural Information Processing Systems (NeurIPS)*, pp. 8024–8035, 2019.
