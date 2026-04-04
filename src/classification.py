@@ -20,21 +20,39 @@ Libraries: sklearn (models, GridSearchCV, metrics), numpy
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import (
-    RandomForestClassifier, HistGradientBoostingClassifier,
+    RandomForestClassifier,
+    HistGradientBoostingClassifier,
 )
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import (
-    accuracy_score, classification_report, confusion_matrix, roc_curve, auc,
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    roc_curve,
+    auc,
 )
 
 try:
     from xgboost import XGBClassifier
+
     HAS_XGB = True
 except ImportError:
     HAS_XGB = False
+
+
+def _xgb_device():
+    """Auto-detect best XGBoost device: 'cuda' if available, else 'cpu'."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
 
 
 def train_classifiers(X_train, y_train, X_test, y_test):
@@ -71,30 +89,37 @@ def train_classifiers(X_train, y_train, X_test, y_test):
 
     svm_pipe = Pipeline([
         ('scaler', StandardScaler()),
-        ('svm', SVC(kernel='rbf', probability=True, class_weight='balanced', random_state=42)),
+        ('svm', SVC(kernel='rbf', probability=True,
+         class_weight='balanced', random_state=42)),
     ])
     param_grid_svm = {
         'svm__C': [0.1, 1, 10],
         'svm__gamma': ['scale', 'auto'],
     }
-    gs_svm = GridSearchCV(svm_pipe, param_grid_svm, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
+    gs_svm = GridSearchCV(svm_pipe, param_grid_svm,
+                          scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
     gs_svm.fit(X_train_svm, y_train_svm)
     print(f"  Best params: {gs_svm.best_params_}")
-    results['SVM (RBF)'] = _evaluate(gs_svm.best_estimator_, X_test, y_test)
+    results["SVM (RBF)"] = _evaluate(gs_svm.best_estimator_, X_test, y_test)
 
     # ── 3. Random Forest with GridSearchCV ───────────────────────────
     print("\n--- Random Forest (GridSearchCV) ---")
-    rf = RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=-1)
+    rf = RandomForestClassifier(
+        class_weight="balanced", random_state=42, n_jobs=-1)
     param_grid = {
-        'n_estimators': [300, 500],
-        'max_depth': [20, None],
-        'min_samples_leaf': [1, 3],
+        "n_estimators": [300, 500],
+        "max_depth": [20, None],
+        "min_samples_leaf": [1, 3],
     }
-    gs = GridSearchCV(rf, param_grid, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
+    gs = GridSearchCV(
+        rf, param_grid, scoring="f1_weighted", cv=cv, n_jobs=-1, verbose=1
+    )
     gs.fit(X_train, y_train)
     print(f"  Best params: {gs.best_params_}")
-    results['Random Forest'] = _evaluate(gs.best_estimator_, X_test, y_test)
-    results['Random Forest']['feature_importances'] = gs.best_estimator_.feature_importances_
+    results["Random Forest"] = _evaluate(gs.best_estimator_, X_test, y_test)
+    results["Random Forest"]["feature_importances"] = (
+        gs.best_estimator_.feature_importances_
+    )
 
     # ── 3. Histogram Gradient Boosted Trees with GridSearchCV ─────────
     # HistGradientBoosting is 10-50x faster than GradientBoosting for
@@ -107,14 +132,18 @@ def train_classifiers(X_train, y_train, X_test, y_test):
 
     gbt = HistGradientBoostingClassifier(random_state=42)
     param_grid_gbt = {
-        'learning_rate': [0.05, 0.1],
-        'max_iter': [200, 500],
-        'max_depth': [4, 6],
+        "learning_rate": [0.05, 0.1],
+        "max_iter": [200, 500],
+        "max_depth": [4, 6],
     }
-    gs_gbt = GridSearchCV(gbt, param_grid_gbt, scoring='f1_weighted', cv=cv, n_jobs=-1, verbose=1)
+    gs_gbt = GridSearchCV(
+        gbt, param_grid_gbt, scoring="f1_weighted", cv=cv, n_jobs=-1, verbose=1
+    )
     gs_gbt.fit(X_train, y_train, sample_weight=sample_weight)
     print(f"  Best params: {gs_gbt.best_params_}")
-    results['Gradient Boosted Trees'] = _evaluate(gs_gbt.best_estimator_, X_test, y_test)
+    results["Gradient Boosted Trees"] = _evaluate(
+        gs_gbt.best_estimator_, X_test, y_test
+    )
 
     # ── 4. XGBoost with GridSearchCV ──────────────────────────────────
     if HAS_XGB:
@@ -123,22 +152,26 @@ def train_classifiers(X_train, y_train, X_test, y_test):
         n_pos = int((y_train == 1).sum())
         scale_pos = n_neg / max(n_pos, 1)
         xgb = XGBClassifier(
-            eval_metric='logloss', random_state=42,
+            eval_metric="logloss",
+            random_state=42,
             scale_pos_weight=scale_pos,
-            device='cuda',
+            device=_xgb_device(),
         )
         param_grid_xgb = {
-            'n_estimators': [200, 500],
-            'max_depth': [4, 6, 8],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'subsample': [0.8, 1.0],
+            "n_estimators": [200, 500],
+            "max_depth": [4, 6, 8],
+            "learning_rate": [0.01, 0.05, 0.1],
+            "subsample": [0.8, 1.0],
         }
-        gs_xgb = GridSearchCV(xgb, param_grid_xgb, scoring='f1_weighted',
-                               cv=cv, n_jobs=1, verbose=1)
+        gs_xgb = GridSearchCV(
+            xgb, param_grid_xgb, scoring="f1_weighted", cv=cv, n_jobs=1, verbose=1
+        )
         gs_xgb.fit(X_train, y_train)
         print(f"  Best params: {gs_xgb.best_params_}")
-        results['XGBoost'] = _evaluate(gs_xgb.best_estimator_, X_test, y_test)
-        results['XGBoost']['feature_importances'] = gs_xgb.best_estimator_.feature_importances_
+        results["XGBoost"] = _evaluate(gs_xgb.best_estimator_, X_test, y_test)
+        results["XGBoost"]["feature_importances"] = (
+            gs_xgb.best_estimator_.feature_importances_
+        )
     else:
         print("\n--- XGBoost: skipped (xgboost not installed) ---")
 
@@ -151,7 +184,8 @@ def _evaluate(model, X_test, y_test):
     y_prob = model.predict_proba(X_test)[:, 1]
 
     acc = accuracy_score(y_test, y_pred)
-    report = classification_report(y_test, y_pred, target_names=['LOS', 'NLOS'])
+    report = classification_report(
+        y_test, y_pred, target_names=["LOS", "NLOS"])
     cm = confusion_matrix(y_test, y_pred)
     fpr, tpr, _ = roc_curve(y_test, y_prob)
     roc_auc = auc(fpr, tpr)
@@ -160,13 +194,13 @@ def _evaluate(model, X_test, y_test):
     print(report)
 
     return {
-        'model': model,
-        'y_pred': y_pred,
-        'y_prob': y_prob,
-        'accuracy': acc,
-        'auc': roc_auc,
-        'confusion_matrix': cm,
-        'fpr': fpr,
-        'tpr': tpr,
-        'report': report,
+        "model": model,
+        "y_pred": y_pred,
+        "y_prob": y_prob,
+        "accuracy": acc,
+        "auc": roc_auc,
+        "confusion_matrix": cm,
+        "fpr": fpr,
+        "tpr": tpr,
+        "report": report,
     }

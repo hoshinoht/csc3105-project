@@ -1,0 +1,421 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{algorithm}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{balance}
+\usepackage{multirow}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{plots/}}
+
+\begin{document}
+
+\title{LOS/NLOS Classification and Distance Estimation for UWB Indoor Positioning Using Feature-Engineered ML and Hybrid CNN-Transformer}
+
+\author{
+\IEEEauthorblockN{Po Haoting, Travis Neo Kuang Yi, Chiang Porntep, Nico Caleb Lim, and Dui Ru En Joshua}
+\IEEEauthorblockA{\textit{Lab P1, Group 4, School of Computing} \\
+\textit{Singapore Institute of Technology and University of Glasgow}\\
+Singapore}
+}
+
+\maketitle
+
+\begin{abstract}
+Accurate line-of-sight (LOS) and non-line-of-sight (NLOS) identification is essential for precise ultra-wideband (UWB) indoor positioning. We study two-path LOS/NLOS classification and path-wise distance estimation on the Decawave DWM1000 dataset. After preprocessing, a valid second path is detected in 40,864 of 41,996 usable samples (97.3\%), producing an expanded two-path dataset of 83,992 rows. On the feature-engineered pipeline, XGBoost gives the best single-model AUC (0.9834), while stacked ensembling attains the highest accuracy (0.9415) with marginal AUC change. A separate raw-CIR CNN+Transformer pipeline reaches AUC 0.9821 on the original split, improving to 0.9845 with CIR augmentation, but this deep-learning result is not directly comparable to the ML results because it uses a different pipeline and split. For regression, path~1 is moderately predictable (best RMSE 1.3706\,m, $R^2=0.6698$), whereas path~2 attains near-perfect scores because its target is derived from input features supplied to the model. These results support tree-based supervised models for this dataset, while unsupervised clustering remains weak.
+\end{abstract}
+
+\begin{IEEEkeywords}
+UWB, LOS/NLOS classification, channel impulse response, CNN, Transformer, indoor positioning, distance estimation
+\end{IEEEkeywords}
+
+%======================================================================
+\section{Introduction}
+
+Ultra-wideband (UWB) technology has emerged as a leading solution for centimeter-level indoor positioning due to its high time resolution and resistance to multipath fading~\cite{b1}. However, non-line-of-sight (NLOS) propagation conditions---caused by obstacles such as walls, furniture, and human bodies---introduce systematic ranging errors that severely degrade positioning accuracy~\cite{b2}. Identifying whether a received signal has traveled via a line-of-sight (LOS) or NLOS path is therefore a critical prerequisite for accurate indoor localization.
+
+\subsection{Problem Statement}
+
+The core challenge in UWB indoor positioning is that NLOS propagation adds a positive bias to the measured range, because signals travel longer paths via reflection, diffraction, or scattering. Without reliable LOS/NLOS classification, ranging errors of several meters can persist, rendering downstream position estimates unreliable~\cite{b3}. The problem is compounded in dense indoor environments where multiple propagation paths coexist in the channel impulse response (CIR), and the dominant path may not be the direct one.
+
+\subsection{State-of-the-Art Solutions}
+
+Existing approaches to LOS/NLOS classification fall into two broad categories.
+
+\textbf{Feature-engineered methods.} Traditional approaches extract hand-crafted features from the CIR---such as rise time, kurtosis, energy ratios, and peak-to-noise metrics---and feed them to classifiers like support vector machines (SVMs), k-nearest neighbors (KNN), or random forests~\cite{b3,b4}. These methods are well-studied and interpretable, but rely heavily on domain expertise for feature selection and may miss subtle signal patterns.
+
+\textbf{Deep learning methods.} Recent work applies convolutional neural networks (CNNs) directly to the raw CIR waveform, bypassing manual feature engineering~\cite{b5}. However, standard CNNs capture only local patterns. Transformer architectures~\cite{b6}, which model long-range dependencies through self-attention, have recently been applied to UWB NLOS detection~\cite{b10,b11} and show promise for capturing relationships between widely separated multipath components.
+
+\subsection{Limitations of Existing Approaches}
+
+Despite their effectiveness, current methods exhibit several weaknesses: (1)~feature-engineered approaches treat each CIR measurement as a single-path decision, discarding the rich information in secondary propagation paths; (2)~CNN-only deep learning models lack the ability to relate distant CIR components, limiting their capacity to capture multipath relationships; and (3)~most studies evaluate on the original balanced dataset without examining how classification extends to multi-path scenarios with realistic class imbalance.
+
+\subsection{Proposed Solution}
+
+In this paper, we address these limitations through a dual-pipeline approach:
+\begin{itemize}
+    \item A \textbf{two-path extraction and labeling framework} that extends binary LOS/NLOS classification to the two dominant signal paths in each CIR measurement, producing an expanded dataset with realistic class imbalance.
+    \item A \textbf{feature engineering pipeline} producing 25 per-path features for classical ML models (Logistic Regression, SVM, Random Forest, Gradient Boosted Trees, XGBoost, and ensembles), with a compact RFECV-selected subset also examined.
+    \item A \textbf{hybrid 1D-CNN + Transformer architecture} that operates directly on the raw 1016-sample CIR waveform, combining local feature extraction with global self-attention in a separate end-to-end pipeline.
+    \item \textbf{Distance estimation models} for both dominant paths, interpreted with attention to the analytic constraint in the path~2 target definition.
+\end{itemize}
+
+%======================================================================
+\section{Proposed Solution Description}
+
+\subsection{Dataset and Data Preparation}
+
+We use the publicly available UWB LOS/NLOS dataset~\cite{b7} collected using Decawave DWM1000 modules across seven distinct indoor environments. The dataset contains 42,000 samples (21,000 LOS and 21,000 NLOS), each comprising 14 scalar features and a 1016-sample CIR recorded at 1\,ns resolution. Table~\ref{tab:features} summarizes the key features.
+
+\begin{table}[t]
+\caption{Dataset Features}
+\label{tab:features}
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Feature} & \textbf{Description} \\
+\midrule
+RANGE & Measured distance (m); also regression target \\
+FP\_IDX & First path index in CIR \\
+FP\_AMP1--3 & First path amplitude estimators \\
+STDEV\_NOISE & Standard deviation of noise \\
+CIR\_PWR & Total CIR power \\
+MAX\_NOISE & Maximum noise level \\
+RXPACC & Preamble accumulation count \\
+FRAME\_LEN & Frame length \\
+PREAM\_LEN & Preamble length \\
+CIR0--CIR1015 & 1016-sample channel impulse response \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Our preprocessing pipeline performs the following steps:
+
+\textbf{CIR normalization.} Each CIR sample is divided by its corresponding RXPACC value to normalize the preamble accumulation effect.
+
+\textbf{Constant/metadata removal.} Three raw features (CH, BITRATE, PRFR) are constant and removed. We additionally drop loader metadata (ENV\_ID) to avoid using environment identifiers as predictors, leaving the 11 scalar features used downstream.
+
+\textbf{Feature scaling.} The 11 remaining scalar features are standardized using zero-mean unit-variance scaling (StandardScaler).
+
+\textbf{NaN/Inf handling.} Any NaN or Inf values introduced during CIR normalization are replaced with zero.
+
+\textbf{Train/test split.} After removing 4 degenerate samples, the usable set has 41,996 rows and is split stratified 80/20 into 33,596 training and 8,400 test samples.
+
+Fig.~\ref{fig:distributions} shows the distribution of key features by LOS/NLOS class, revealing clear separability for several features. Correlation analysis shows that FP\_AMP1--3 are highly correlated ($r>0.9$), as are STDEV\_NOISE and MAX\_NOISE ($r\approx0.95$).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{02_feature_distributions.png}
+\caption{Distribution of scalar features by LOS (blue) and NLOS (orange) class. Features such as CIR\_PWR and FP\_AMP1 show strong class separability.}
+\label{fig:distributions}
+\end{figure}
+
+% Correlation heatmap omitted for space; FP\_AMP1--3 are highly correlated (r>0.9), as are STDEV\_NOISE and MAX\_NOISE.
+
+\subsection{Two-Path Extraction and Labeling}
+
+UWB CIR measurements often contain multiple propagation paths. The two shortest (dominant) paths carry the most information for positioning: if the first path is LOS, the second is necessarily NLOS (reflected); if the first path is NLOS, both paths are NLOS. Algorithm~\ref{alg:peak} describes our peak detection procedure.
+
+\begin{algorithm}[t]
+\caption{Two-Path Peak Detection}
+\label{alg:peak}
+\begin{algorithmic}[1]
+\REQUIRE CIR waveform $c[0..1015]$, first path index $\mathrm{FP\_IDX}$
+\ENSURE Path indices $p_1, p_2$ and amplitudes $a_1, a_2$
+\STATE $p_1 \leftarrow \arg\max_{j \in [\mathrm{FP\_IDX}-10, \mathrm{FP\_IDX}+10]} c[j]$
+\STATE $a_1 \leftarrow c[p_1]$
+\STATE Smooth $c$ with a 3-sample moving average to obtain $\tilde{c}$
+\STATE Find peaks in $\tilde{c}$ with height $> 0.02 \cdot a_1$, distance $> 15$, prominence $> 0.02 \cdot a_1$
+\STATE Remove peaks within $\pm 15$ samples of $p_1$
+\STATE $p_2 \leftarrow$ remaining peak with maximum prominence (fallback: max amplitude)
+\STATE $a_2 \leftarrow c[p_2]$ (from original unsmoothed CIR)
+\RETURN $p_1, a_1, p_2, a_2$
+\end{algorithmic}
+\end{algorithm}
+
+After preprocessing, 41,996 samples remain usable for two-path extraction, and a second path is detected in 40,864 of them (97.3\%). Fig.~\ref{fig:cir} shows example CIR waveforms with detected peaks.
+
+\textbf{Two-path labeling.} For each usable original sample, we generate two rows: path~1 retains the original LOS/NLOS label, while path~2 is always labeled NLOS: if path~1 is LOS, then path~2 is necessarily a reflected component, and if path~1 is itself NLOS, then path~2 is also NLOS. This yields an expanded dataset of 83,992 rows with a 25\%/75\% LOS/NLOS class imbalance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{04_cir_examples.png}
+\caption{Example CIR waveforms showing detected first path (triangle) and second path (circle) for LOS and NLOS conditions.}
+\label{fig:cir}
+\end{figure}
+
+\subsection{Feature Engineering Pipeline}
+
+For each detected path, we compute 8 local waveform features (Table~\ref{tab:path_features}) together with 5 full-CIR statistical descriptors, 9 shared scalar features, and 3 derived shared features, yielding a 25-dimensional feature vector per path.
+
+\begin{table}[t]
+\caption{Key local per-path engineered features (8 of the 13 per-path descriptors)}
+\label{tab:path_features}
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Feature} & \textbf{Description} \\
+\midrule
+path\_idx & Peak sample index in CIR \\
+path\_amp & Peak amplitude \\
+rise\_time & Samples from 10\% threshold to peak \\
+decay\_time & Samples from peak to 10\% threshold \\
+kurtosis\_local & Kurtosis of $\pm$15-sample window \\
+energy\_ratio & Local energy / total CIR energy \\
+peak\_to\_noise & Peak amplitude / STDEV\_NOISE \\
+amplitude\_ratio & This path amp / other path amp \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. In particular, RFECV selects a compact subset consisting of \texttt{p\_path\_amp} and \texttt{p\_peak\_to\_noise}, while broader tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator. SHAP analysis~\cite{b16} (Fig.~\ref{fig:shap}) confirms these rankings from a model-agnostic perspective.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{06_feature_importance.png}
+\caption{Top 15 features ranked by Random Forest Gini importance. Signal power and noise-related features dominate.}
+\label{fig:importance}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.48\columnwidth]{20_shap_beeswarm.png}
+\hfill
+\includegraphics[width=0.48\columnwidth]{21_shap_bar.png}
+\caption{SHAP feature impact: beeswarm plot (left) showing per-sample feature contributions and mean absolute SHAP values (right) confirming Gini-based rankings.}
+\label{fig:shap}
+\end{figure}
+
+The classical ML study includes Logistic Regression (LR), Support Vector Machine (SVM), Random Forest (RF)~\cite{b9}, Gradient Boosted Trees (GBT), and XGBoost (XGB)~\cite{b8}, followed by simple averaging and stacked ensembles over the strongest tree-based models.
+
+\subsection{End-to-End Deep Learning Pipeline}
+
+We propose a hybrid 1D-CNN + Transformer architecture that operates directly on the raw 1016-sample CIR waveform. Algorithm~\ref{alg:training} describes the training procedure.
+
+\textbf{Architecture.} The model consists of three components:
+
+\textit{1) CNN encoder:} A multi-scale first convolutional stage (parallel kernels 3/7/15) is followed by MaxPool(2), halving the sequence from 1016 to 508. Two subsequent residual Conv1D blocks~\cite{b14} (kernels 5 and 3) with max-pooling progressively reduce this to 127 feature vectors of dimension 128.
+
+\textit{2) Transformer encoder:} Two Transformer encoder layers with 4-head self-attention model global dependencies across the CNN-encoded sequence. Sinusoidal positional encoding preserves temporal ordering. The self-attention mechanism allows the model to relate distant CIR components, capturing multipath relationships that span the full waveform.
+
+\textit{3) Classification head:} Global average pooling reduces the transformer output to a single 128-dimensional vector, which is concatenated with 11 scaled scalar features and passed through a two-layer MLP (hidden size 64) to produce a binary logit.
+
+\begin{table}[t]
+\caption{CNN-Transformer Hyperparameters}
+\label{tab:hyperparams}
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+CNN channels & 32 $\rightarrow$ 64 $\rightarrow$ 128 \\
+CNN kernels & 3/7/15 (parallel), then 5 and 3 \\
+Transformer layers & 2 \\
+Attention heads & 4 \\
+Feedforward dim & 256 \\
+MLP hidden & 64 \\
+Dropout & 0.1 \\
+Optimizer & Adam~\cite{b15} (lr = $1 \times 10^{-3}$) \\
+Loss & BCEWithLogitsLoss \\
+Label smoothing & $\varepsilon = 0.05$ ($y' = 0.975/0.025$)~\cite{b12} \\
+Batch size & 256 \\
+Early stopping & patience = 5 \\
+Device & Auto-select (CUDA/MPS/CPU) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{algorithm}[t]
+\caption{CNN-Transformer Training}
+\label{alg:training}
+\begin{algorithmic}[1]
+\REQUIRE Training set $\{(\mathbf{c}_i, \mathbf{s}_i, y_i)\}_{i=1}^{N}$ (CIR, scalars, label)
+\ENSURE Trained model $f_\theta$
+\STATE Initialize $f_\theta$ with random weights
+\STATE $\text{best\_loss} \leftarrow \infty$; $\text{patience\_count} \leftarrow 0$
+\FOR{epoch = 1 to 50}
+    \FOR{each mini-batch $B$}
+        \STATE $y'_B \leftarrow y_B \cdot 0.95 + 0.025$ \COMMENT{label smoothing, $\varepsilon{=}0.05$}
+        \STATE $\hat{y} \leftarrow f_\theta(\mathbf{c}_B, \mathbf{s}_B)$
+        \STATE $\mathcal{L} \leftarrow \text{BCEWithLogits}(\hat{y}, y'_B)$
+        \STATE Update $\theta$ via Adam with $\nabla_\theta \mathcal{L}$
+    \ENDFOR
+    \STATE Compute validation loss $\mathcal{L}_\text{val}$
+    \IF{$\mathcal{L}_\text{val} < \text{best\_loss}$}
+        \STATE $\text{best\_loss} \leftarrow \mathcal{L}_\text{val}$; save $\theta$; reset patience
+    \ELSE
+        \STATE $\text{patience\_count} \leftarrow \text{patience\_count} + 1$
+    \ENDIF
+    \IF{$\text{patience\_count} \geq 5$}
+        \STATE \textbf{break} (early stopping)
+    \ENDIF
+\ENDFOR
+\RETURN $f_\theta$ with best validation weights
+\end{algorithmic}
+\end{algorithm}
+
+The DL model is trained on the original balanced 42,000-sample dataset (not the two-path expanded set), using an 80/20 stratified split in a separate pre-computed raw-CIR pipeline.
+
+%======================================================================
+\section{Experimental Results and Discussion}
+
+\subsection{Classification Results}
+
+Table~\ref{tab:cls_results} summarizes the supervised classification results. The feature-engineered ML models and ensembles are evaluated on the two-path expanded test set, while the CNN+Transformer results come from a separate raw-CIR pipeline on the original split. The latter should therefore be read as a related reference point rather than a direct one-to-one comparison.
+
+\begin{table}[t]
+\caption{Classification Performance}
+\label{tab:cls_results}
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Model} & \textbf{Accuracy} & \textbf{AUC} & \textbf{Test Set} \\
+\midrule
+Logistic Regression & 0.9199 & 0.9694 & Expanded \\
+SVM & 0.6523 & 0.8734 & Expanded \\
+Random Forest & 0.9386 & 0.9815 & Expanded \\
+Gradient Boosted Trees & 0.9311 & 0.9819 & Expanded \\
+XGBoost & 0.9404 & 0.9834 & Expanded \\
+Ensemble Avg & 0.9402 & 0.9831 & Expanded \\
+Ensemble Stacked & 0.9415 & 0.9830 & Expanded \\
+CNN+Transformer & 0.9360 & 0.9821 & Original split \\
+CNN+Transformer + CIR Aug & 0.9421 & 0.9845 & Original split \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Among directly comparable feature-engineered models, XGBoost is best by AUC (0.9834), while stacked ensembling gives the highest accuracy (0.9415) with essentially no AUC gain over XGBoost alone. SVM performs weakest, likely because the subsampled training set and current feature representation are ill-suited for a margin-based classifier. In the separate raw-CIR pipeline, CIR augmentation yields a more pronounced gain for the CNN+Transformer than SMOTE~\cite{b13} does for the ML models; however, this DL-vs-ML comparison must remain qualified because the underlying splits and inputs differ. Fig.~\ref{fig:roc} and Fig.~\ref{fig:confusion} show representative ROC and confusion-matrix views for the main baseline models.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{08_roc_curves.png}
+\caption{ROC curves for selected baseline classification models. Tree-based ML and CNN+Transformer achieve similarly high AUC values.}
+\label{fig:roc}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{07_confusion_matrices.png}
+\caption{Confusion matrices for selected baseline classification models.}
+\label{fig:confusion}
+\end{figure}
+
+\subsection{Distance Estimation Results}
+
+Four regressors are trained per path: Ridge Regression (linear baseline), RF, GBT, and XGB. Table~\ref{tab:reg_results} presents their performance. Path~1 uses the original test split, while path~2 uses the 8,193 valid path~2 test samples retained after preprocessing and two-path extraction.
+
+\begin{table}[t]
+\caption{Distance Estimation Performance}
+\label{tab:reg_results}
+\centering
+\begin{tabular}{@{}llcc@{}}
+\toprule
+\textbf{Path} & \textbf{Model} & \textbf{RMSE (m)} & \textbf{$R^2$} \\
+\midrule
+\multirow{4}{*}{Path 1} & Ridge & 1.6164 & 0.5407 \\
+ & Random Forest & 1.3706 & 0.6698 \\
+ & GBT & 1.3872 & 0.6617 \\
+ & XGBoost & 1.3726 & 0.6688 \\
+\midrule
+\multirow{4}{*}{Path 2} & Ridge$^*$ & 0.0000 & 1.0000 \\
+ & Random Forest & 0.4696 & 0.9997 \\
+ & GBT & 0.2889 & 0.9999 \\
+ & XGBoost & 1.2176 & 0.9981 \\
+\bottomrule
+\multicolumn{4}{@{}l}{\footnotesize $^*$Perfect score: target is a near-deterministic linear function of inputs.}
+\end{tabular}
+\end{table}
+
+Path~1 regression is materially harder than classification because the target RANGE includes environment-dependent NLOS bias~\cite{b3,b4}, with the best results coming from RF/XGB-style tree ensembles at roughly 1.37\,m RMSE and $R^2\approx0.67$. Path~2 appears much easier, but this must be interpreted carefully: the target is defined as $\texttt{RANGE} + (\texttt{path2\_idx} - \texttt{FP\_IDX})\times 0.2998$\,m/ns (speed of light), while \texttt{RANGE} is also supplied as an input. The near-perfect path~2 scores therefore reflect a strong analytical constraint in the target construction rather than an entirely independent prediction task. Fig.~\ref{fig:regression} shows predicted vs. actual distance scatter plots.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{10_predicted_vs_actual.png}
+\caption{Predicted vs. actual distance for path 1 (left) and path 2 (right) regression models.}
+\label{fig:regression}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{11_residuals.png}
+\caption{Regression residual distributions. Path~1 shows a slight positive bias from NLOS ranging error; path~2 residuals are tightly clustered around zero, consistent with the analytically constrained target.}
+\label{fig:residuals}
+\end{figure}
+
+\subsection{ML vs. Deep Learning Comparison}
+
+The principal supervised finding is that feature-engineered tree models perform well on the expanded two-path task: XGBoost reaches AUC 0.9834, and stacked ensembling yields only marginal improvement. The CNN+Transformer also performs strongly, reaching AUC 0.9821 on the original split and 0.9845 with CIR augmentation, but this ML-vs-DL comparison is not direct because the deep model is trained and evaluated in a separate raw-CIR pipeline on the original split. Fig.~\ref{fig:comparison} summarizes the model comparison.
+
+Accordingly, we treat the DL results as complementary evidence that raw-CIR learning is viable, rather than as evidence that DL surpasses ML on an identical benchmark. Within the notebook experiments, SMOTE has negligible effect on the ML pipeline, whereas CIR augmentation produces a more pronounced gain for the separate CNN+Transformer pipeline.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{09_model_comparison.png}
+\caption{Comparison of classification metrics across all models.}
+\label{fig:comparison}
+\end{figure}
+
+\subsection{Interpretability via Attention}
+
+A key advantage of the CNN-Transformer is interpretability through attention weight visualization. Fig.~\ref{fig:attention} shows a representative attention pattern for sample CIR waveforms. Qualitatively, elevated attention often appears near first-arrival and multipath regions, offering suggestive evidence about which CIR segments influence predictions. This complements the feature-importance analysis of the classical models.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{13_attention_map.png}
+\caption{Transformer attention weights overlaid on a CIR waveform. High attention concentrates near the first path and multipath components.}
+\label{fig:attention}
+\end{figure}
+
+\subsection{Error Analysis}
+
+Classification errors primarily occur in ambiguous cases where NLOS signals have strong direct-path-like characteristics or where LOS signals experience significant multipath interference. The gap between LR and tree-based models indicates a nonlinear decision boundary, while the weak SVM result suggests that the current feature representation and tuning are ill-suited for a margin-based classifier.
+
+For distance estimation, path~1 remains the more meaningful regression task because the measured range includes environment-dependent bias that is not trivially recoverable from a single formula. By contrast, path~2 regression benefits from the direct geometric relationship embedded in the target definition and reflects the analytical dependency rather than genuine predictive difficulty.
+
+Unsupervised clustering is weak. KMeans reaches only 0.5906 test accuracy with ARI 0.0269, and DBSCAN fails to discover any clusters, labeling 100\% of samples as noise. These results suggest that LOS/NLOS separation in this feature space is not readily achievable through unsupervised methods alone.
+
+From a practical standpoint, the CNN-Transformer operates on the full 1016-sample CIR plus 11 scalar features, avoiding manual feature engineering, whereas the tabular models require the 25-dimensional engineered feature vector.
+
+%======================================================================
+\section{Conclusion}
+
+We presented a concise UWB LOS/NLOS classification and distance-estimation study using a feature-engineered two-path pipeline together with a separate raw-CIR CNN+Transformer reference pipeline. The two-path extraction stage finds a valid second path in 97.3\% of usable preprocessed samples and expands the supervised dataset to 83,992 rows.
+
+The key findings are as follows: (1) among directly comparable ML models, XGBoost gives the best single-model AUC (0.9834), while stacked ensembling gives the highest accuracy (0.9415) with marginal AUC change; (2) the CNN+Transformer is competitive, and CIR augmentation improves it further, but this DL result comes from a separate original-split raw-CIR pipeline and is not a strict one-to-one comparison with the ML results; (3) path~1 regression is moderately accurate, whereas path~2 regression is analytically constrained by the way its target is defined; and (4) clustering results are weak and should not be used to claim strong unsupervised separability.
+
+\subsection{Future Work}
+
+Several directions merit further investigation: (1) Ensemble methods combining ML and DL predictions; (2) Cross-environment generalization studies using leave-one-environment-out validation; (3) Model compression and quantization for real-time deployment on embedded UWB receivers; (4) Extension to multi-class scenarios distinguishing between different NLOS propagation mechanisms (diffraction, reflection, scattering).
+
+\section*{Acknowledgment}
+
+The authors thank the contributors of the UWB-LOS-NLOS-Data-Set for making the dataset publicly available.
+
+\balance
+\begin{thebibliography}{00}
+\bibitem{b1} Z. Sahinoglu, S. Gezici, and I. Guvenc, \textit{Ultra-Wideband Positioning Systems: Theoretical Limits, Ranging Algorithms, and Protocols}. Cambridge, U.K.: Cambridge Univ. Press, 2008.
+\bibitem{b2} H. Wymeersch, J. Lien, and M. Z. Win, ``Cooperative localization in wireless networks,'' \textit{Proc. IEEE}, vol. 97, no. 2, pp. 427--450, Feb. 2009.
+\bibitem{b3} J. Khodjaev, Y. Park, and A. S. Malik, ``Survey of NLOS identification and error mitigation problems in UWB-based positioning algorithms for dense environments,'' \textit{Ann. Telecommun.}, vol. 65, pp. 301--311, 2010.
+\bibitem{b4} S. Marano, W. M. Gifford, H. Wymeersch, and M. Z. Win, ``NLOS identification and mitigation for localization based on UWB experimental data,'' \textit{IEEE J. Sel. Areas Commun.}, vol. 28, no. 7, pp. 1026--1035, Sep. 2010.
+\bibitem{b5} A. Niitsoo, T. Edelhausser, E. Eberlein, N. Hadaschik, and C. Mutschler, ``A deep learning approach to position estimation from channel impulse responses,'' \textit{Sensors}, vol. 19, no. 5, p. 1064, 2019.
+\bibitem{b6} A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, ``Attention is all you need,'' in \textit{Proc. NeurIPS}, 2017, pp. 5998--6008.
+\bibitem{b7} K. Bregar and M. Mohorcic, ``Improving indoor localization using convolutional neural networks on computationally restricted devices,'' \textit{IEEE Access}, vol. 6, pp. 17429--17441, 2018.
+\bibitem{b8} T. Chen and C. Guestrin, ``XGBoost: a scalable tree boosting system,'' in \textit{Proc. ACM SIGKDD}, 2016, pp. 785--794.
+\bibitem{b9} L. Breiman, ``Random forests,'' \textit{Machine Learning}, vol. 45, no. 1, pp. 5--32, 2001.
+\bibitem{b10} S. Tomovi\'{c}, K. Bregar, T. Javornik, and I. Radusinovi\'{c}, ``Transformer-based NLoS detection in UWB localization systems,'' in \textit{Proc. 30th Telecommun. Forum (TELFOR)}, 2022.
+\bibitem{b11} H.-J. Hwang, S.-G. Jeong, and W.-J. Hwang, ``Ultrawideband non-line-of-sight classification using transformer-convolutional neural networks,'' \textit{IEEE Access}, 2025, doi: 10.1109/ACCESS.2025.3568830.
+\bibitem{b12} C. Szegedy, V. Vanhoucke, S. Ioffe, J. Shlens, and Z. Wojna, ``Rethinking the Inception architecture,'' in \textit{Proc. IEEE CVPR}, 2016, pp. 2818--2826.
+\bibitem{b13} N. V. Chawla, K. W. Bowyer, L. O. Hall, and W. P. Kegelmeyer, ``SMOTE: Synthetic minority over-sampling technique,'' \textit{J. Artif. Intell. Res.}, vol. 16, pp. 321--357, 2002.
+\bibitem{b14} K. He, X. Zhang, S. Ren, and J. Sun, ``Deep residual learning for image recognition,'' in \textit{Proc. IEEE CVPR}, 2016, pp. 770--778.
+\bibitem{b15} D. P. Kingma and J. Ba, ``Adam: A method for stochastic optimization,'' in \textit{Proc. ICLR}, 2015.
+\bibitem{b16} S. M. Lundberg and S.-I. Lee, ``A unified approach to interpreting model predictions,'' in \textit{Proc. NeurIPS}, 2017, pp. 4765--4774.
+\end{thebibliography}
+
+\end{document}

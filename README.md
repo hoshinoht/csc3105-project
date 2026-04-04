@@ -1,78 +1,90 @@
-# UWB LOS and NLOS Data Set
-Data set was created using [SNPN-UWB](http://www.log-a-tec.eu/mtc.html) board with DecaWave [DWM1000](http://www.decawave.com/sites/default/files/resources/dwm1000-datasheet-v1.3.pdf) UWB radio module. 
+# LOS/NLOS UWB Wireless Signal Classification for Indoor Precise Positioning
 
-## Data Set Description
-Measurements were taken on 7 different indoor locations:
-* Office1
-* Office2
-* Small appartment
-* Small workshop
-* Kitchen with a living room
-* Bedroom
-* Boiler room.
+**CSC3105 Data Analytics and AI -- Mini-Project**\
+Lab P1, Group 4 | Singapore Institute of Technology / University of Glasgow
 
-In every indoor location 3000 LOS samples and 3000 NLOS samples were taken. Different locations were choosen to prevent building of location-specific LOS and NLOS models. All together 42000 samples were taken: 21000 for LOS and 21000 for NLOS channel condition. To make data set ready for building LOS and NLOS models, samples are randomized to prevent overfitting of a model to particular places. 
-For measurements two UWB nodes were used: one node as an anchor and the second node as a tag. Only traces of LOS and NLOS channel measurements were taken without any reference positioning (this data set is not appropriate for localization evaluation).
+## Overview
 
-## Data Set Structure
-Folder with data set is organized as follows:
+This project addresses two-path LOS/NLOS classification and path-wise distance estimation for Ultra-Wideband (UWB) indoor positioning. Given a single channel impulse response (CIR) measurement, we extract the two dominant propagation paths, classify each as LOS or NLOS, and estimate their physical propagation distances.
 
-	+ code
-		|____ uwb_dataset.py
-	+ dataset
-		|____ uwb_dataset_part1.csv
-		|____ uwb_dataset_part2.csv
-		|____ uwb_dataset_part3.csv
-		|____ uwb_dataset_part4.csv
-		|____ uwb_dataset_part5.csv
-		|____ uwb_dataset_part6.csv
-		|____ uwb_dataset_part7.csv
+We implement a dual-pipeline architecture:
 
-Whole data set is randomized and later split into 7 smaller files.
+- **Pipeline 1 (Feature-Engineered ML)**: 25 physics-motivated features per path, evaluated with Logistic Regression, SVM, Random Forest, Gradient Boosted Trees (GBT), and XGBoost.
+- **Pipeline 2 (End-to-End DL)**: A hybrid CNN+Transformer that operates directly on the raw 1016-sample CIR waveform.
 
-## File Structure
-First line in every data set file is a header with column names. Elements of every sample are:
-* NLOS (1 if NLOS, 0 if LOS)
-* Measured range (time of flight)
-* FP_IDX (index of detected first path element in channel impulse response (CIR) accumulator: in data set it can be accessed by **first_path_index+15**)
-* FP_AMP1 (first path amplitude - part1) [look in user manual](http://thetoolchain.com/mirror/dw1000/dw1000_user_manual_v2.05.pdf)
-* FP_AMP2 (first path amplitude - part2) [look in user manual](http://thetoolchain.com/mirror/dw1000/dw1000_user_manual_v2.05.pdf) 
-* FP_AMP3 (first path amplitude - part3) [look in user manual](http://thetoolchain.com/mirror/dw1000/dw1000_user_manual_v2.05.pdf)
-* STDEV_NOISE (standard deviation of noise)
-* CIR_PWR (total channel impulse response power)
-* MAX_NOISE (maximum value of noise)
-* RXPACC (received RX preamble symbols)
-* CH (channel number)
-* FRAME_LEN (length of frame)
-* PREAM_LEN (preamble length)
-* BITRATE
-* PRFR (pulse repetition frequency rate in MHz)
-* CIR (absolute value of channel impulse response: 1016 samples with 1 nanosecond resolution)
+## Key Results
 
-## Importing Data Set in Python
-To import data set data into Python environment, **uwb_dataset.py** script from folder **code** can be used. The CIR data still needs to be divided by number of acquired RX preamble samples (RX_PACC).
+| Model | Accuracy | AUC | Pipeline |
+|---|---|---|---|
+| XGBoost | 0.9404 | 0.9834 | Feature-engineered (expanded 2-path) |
+| Ensemble (Stacked) | 0.9415 | 0.9830 | Feature-engineered (expanded 2-path) |
+| CNN+Transformer + Aug | 0.9421 | 0.9845 | Raw-CIR (original split) |
 
-	import uwb_dataset
-	
-	# import raw data
-	data = uwb_dataset.import_from_files()
-	
-	# divide CIR by RX preable count (get CIR of single preamble pulse)
-	# item[2] represents number of acquired preamble symbols
-	for item in data:
-		item[15:] = item[15:]/float(item[2])
-	
-	print(data)
+The ML and DL results come from separate pipelines and should be compared qualitatively.
 
-## Citation
-If you are using our data set in your research, citation of the following paper would be greatly appreciated.
+## Project Structure
 
-[Klemen Bregar, Andrej Hrovat, Mihael Mohorčič, “NLOS Channel Detection with Multilayer Perceptron in Low-Rate Personal Area Networks for Indoor Localization Accuracy Improvement”. Proceedings of the 8th Jožef Stefan International Postgraduate School Students’ Conference, Ljubljana, Slovenia, May 31-June 1, 2016.](https://www.researchgate.net/publication/308986067_NLOS_Channel_Detection_with_Multilayer_Perceptron_in_Low-Rate_Personal_Area_Networks_for_Indoor_Localization_Accuracy_Improvement)
+```
+.
+├── main.py                  # Full pipeline orchestration
+├── evaluation.ipynb         # Jupyter notebook with evaluation
+├── src/
+│   ├── preprocessing.py     # Data cleaning, CIR normalization, scaling
+│   ├── peak_detection.py    # Two-path extraction algorithm
+│   ├── feature_engineering.py  # 25-feature per-path computation
+│   ├── classification.py    # GridSearchCV training (LR, SVM, RF, GBT, XGB)
+│   ├── dl_models.py         # CIRTransformerClassifier architecture
+│   ├── dl_training.py       # CNN+Transformer training loop
+│   ├── regression.py        # Distance estimation (Ridge, RF, GBT, XGB)
+│   ├── ensemble.py          # Averaging and stacked generalization
+│   ├── clustering.py        # K-Means and DBSCAN unsupervised analysis
+│   ├── synthetic_data.py    # SMOTE and CIR waveform augmentation
+│   └── visualization.py     # 24 diagnostic plots
+├── dataset/                 # UWB LOS/NLOS dataset (7 CSV files, 42K samples)
+├── plots/                   # Generated visualizations
+├── Report/
+│   ├── DAReport/            # Full project report (PDF + markdown draft)
+│   └── ieee/                # IEEE conference paper (6-page, LaTeX)
+└── requirements.txt
+```
 
-## Author and license
-Author of UWB LOS and NLOS Data Set and corresponding Python scripts is Klemen Bregar, **klemen.bregar@ijs.si**. 
+## Setup
 
-Copyright (C) 2017 SensorLab, Jožef Stefan Institute http://sensorlab.ijs.si
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
-## Acknowledgement
-The research leading to these results has received funding from the European Horizon 2020 Programme project eWINE under grant agreement No. 688116.
+Hardware acceleration is auto-detected (CUDA > Apple MPS > CPU) for the deep learning pipeline.
+
+## Team
+
+| Member | SIT ID | Glasgow ID |
+|---|---|---|
+| Po Haoting | 2401280 | 3070642P |
+| Travis Neo Kuang Yi | 2401250 | 3070641N |
+| Chiang Porntep | 2403352 | 3070566C |
+| Nico Caleb Lim | 2401536 | 3070658L |
+| Dui Ru En Joshua | 2402201 | 3070683D |
+
+---
+
+## Dataset Acknowledgement
+
+The dataset used in this project is the **UWB LOS and NLOS Data Set** created using the [SNPN-UWB](http://www.log-a-tec.eu/mtc.html) board with the DecaWave [DWM1000](http://www.decawave.com/sites/default/files/resources/dwm1000-datasheet-v1.3.pdf) UWB radio module. It contains 42,000 samples (21,000 LOS + 21,000 NLOS) collected across 7 indoor environments at the Jozef Stefan Institute, Slovenia.
+
+### Citation
+
+If you use this dataset, please cite:
+
+> Klemen Bregar, Andrej Hrovat, Mihael Mohorcic, ["NLOS Channel Detection with Multilayer Perceptron in Low-Rate Personal Area Networks for Indoor Localization Accuracy Improvement"](https://www.researchgate.net/publication/308986067_NLOS_Channel_Detection_with_Multilayer_Perceptron_in_Low-Rate_Personal_Area_Networks_for_Indoor_Localization_Accuracy_Improvement). Proceedings of the 8th Jozef Stefan International Postgraduate School Students' Conference, Ljubljana, Slovenia, May 31-June 1, 2016.
+
+### Author and License
+
+Author of the UWB LOS and NLOS Data Set: Klemen Bregar, **klemen.bregar@ijs.si**
+
+Copyright (C) 2017 SensorLab, Jozef Stefan Institute http://sensorlab.ijs.si
+
+### Funding Acknowledgement
+
+The research leading to the dataset has received funding from the European Horizon 2020 Programme project eWINE under grant agreement No. 688116.
