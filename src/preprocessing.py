@@ -72,10 +72,12 @@ def preprocess(df):
         print(f"Missing values check: 0 missing (dataset is clean)")
 
     # Step 0b: Flag and remove degenerate samples
-    # RANGE=0 (physically impossible measurement) and CIR_PWR=0 (no received power)
-    # are hardware errors, not meaningful NLOS artifacts.  These are distinct from
-    # large-valued "outliers" which are genuine NLOS signal characteristics.
-    degenerate_mask = (df['RANGE'] == 0) | (df['CIR_PWR'] == 0)
+    # RANGE=0 (physically impossible measurement), CIR_PWR=0 (no received power),
+    # and RXPACC=0 (no preamble accumulation — would cause divide-by-zero during
+    # CIR normalization in Step 2) are hardware errors, not meaningful NLOS
+    # artifacts. These are distinct from large-valued "outliers" which are genuine
+    # NLOS signal characteristics.
+    degenerate_mask = (df['RANGE'] == 0) | (df['CIR_PWR'] == 0) | (df['RXPACC'] == 0)
     n_degenerate = degenerate_mask.sum()
     if n_degenerate > 0:
         print(f"Removed {n_degenerate} degenerate samples (RANGE=0 or CIR_PWR=0)")

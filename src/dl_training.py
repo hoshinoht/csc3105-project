@@ -68,9 +68,28 @@ def _get_device():
     return torch.device('cpu')
 
 
+def _seed_everything(seed=42):
+    """
+    Seed Python, NumPy, and PyTorch (CPU + CUDA) RNGs for reproducible
+    deep-learning runs. Without this, weight initialisation, DataLoader
+    shuffling, and dropout masks vary across runs and the CNN+Transformer
+    accuracy/AUC drift by ~0.5% between otherwise identical invocations.
+    """
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    # Deterministic cuDNN trades a small amount of throughput for reproducibility
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 def train_dl_classifier(X_cir_train, X_scalar_train, y_train,
                          X_cir_test, X_scalar_test, y_test,
-                         lr=1e-3, batch_size=256, max_epochs=50, patience=5):
+                         lr=1e-3, batch_size=256, max_epochs=50, patience=5,
+                         seed=42):
     """
     Train the CNN+Transformer model and return results dict compatible
     with the existing classification pipeline.
@@ -99,8 +118,12 @@ def train_dl_classifier(X_cir_train, X_scalar_train, y_train,
         dict: {model, y_pred, y_prob, accuracy, auc, confusion_matrix,
                fpr, tpr, report} — compatible with ML pipeline results.
     """
+    # Seed all RNGs before any model/DataLoader construction so that weight
+    # initialisation, shuffling, and dropout are reproducible across runs.
+    _seed_everything(seed)
+
     device = _get_device()
-    print(f"\n--- CNN+Transformer (device: {device}) ---")
+    print(f"\n--- CNN+Transformer (device: {device}, seed: {seed}) ---")
 
     # ── Initialise model ─────────────────────────────────────────────
     n_scalar = X_scalar_train.shape[1]  # Number of scalar features (11)
@@ -109,8 +132,12 @@ def train_dl_classifier(X_cir_train, X_scalar_train, y_train,
     # ── Create DataLoaders for batched training/assessment ───────────
     train_ds = CIRDataset(X_cir_train, X_scalar_train, y_train)
     test_ds = CIRDataset(X_cir_test, X_scalar_test, y_test)
+    # Dedicated generator ensures DataLoader shuffling is seeded too
+    loader_generator = torch.Generator()
+    loader_generator.manual_seed(seed)
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              num_workers=0, pin_memory=True)
+                              num_workers=0, pin_memory=True,
+                              generator=loader_generator)
     test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False,
                              num_workers=0, pin_memory=True)
 
