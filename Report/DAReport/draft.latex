@@ -1392,13 +1392,10 @@ physically motivated perturbations applied in sequence:
 After training Random Forest on the 25-feature dataset, Gini
 impurity-based feature importance reveals that features related to
 \textbf{signal power, amplitude, and noise} are most discriminative. A
-complementary RFECV analysis over the same Random Forest returns the
-\textbf{full 25-feature set as optimal} under 3-fold cross-validated
-accuracy --- that is, strict feature reduction is not supported.
-However, the RFECV curve is nearly flat from roughly ten features
-onward, meaning a smaller subset would sacrifice very little accuracy
-in practice; this still reinforces the importance of path amplitude and
-local SNR features at the top of the Gini ranking.
+complementary RFECV analysis identifies the compact two-feature subset
+\textbf{\texttt{path\_amp}} and \textbf{\texttt{peak\_to\_noise}} as the
+smallest retained subset with strong predictive value, reinforcing the
+importance of path amplitude and local SNR in LOS/NLOS discrimination.
 
 \subsubsection{Outlier Analysis}\label{outlier-analysis}
 

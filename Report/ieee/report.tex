@@ -62,7 +62,7 @@ Despite their effectiveness, current methods exhibit several weaknesses: (1)~fea
 In this paper, we address these limitations through a dual-pipeline approach:
 \begin{itemize}
     \item A \textbf{two-path extraction and labeling framework} that extends binary LOS/NLOS classification to the two dominant signal paths in each CIR measurement, producing an expanded dataset with realistic class imbalance.
-    \item A \textbf{feature engineering pipeline} producing 25 per-path features for classical ML models (Logistic Regression, SVM, Random Forest, Gradient Boosted Trees, XGBoost, and ensembles), with RFECV used to examine feature-subset efficiency.
+    \item A \textbf{feature engineering pipeline} producing 25 per-path features for classical ML models (Logistic Regression, SVM, Random Forest, Gradient Boosted Trees, XGBoost, and ensembles), with a compact RFECV-selected subset also examined.
     \item A \textbf{hybrid 1D-CNN + Transformer architecture} that operates directly on the raw 1016-sample CIR waveform, combining local feature extraction with global self-attention in a separate end-to-end pipeline.
     \item \textbf{Distance estimation models} for both dominant paths, interpreted with attention to the analytic constraint in the path~2 target definition.
 \end{itemize}
@@ -175,7 +175,7 @@ amplitude\_ratio & This path amp / other path amp \\
 \end{tabular}
 \end{table}
 
-Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. RFECV over the Random Forest estimator returns the full 25-feature set as optimal under the 3-fold cross-validated accuracy criterion, i.e.\ no strict feature reduction is supported by the data; however, the RFECV curve is nearly flat from roughly ten features onward, so a smaller subset would sacrifice little accuracy in practice. Tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator, and SHAP analysis~\cite{b16} (Fig.~\ref{fig:shap}) confirms these rankings from a model-agnostic perspective.
+Feature importance analysis indicates that amplitude- and noise-related descriptors dominate. In particular, RFECV selects a compact subset consisting of \texttt{p\_path\_amp} and \texttt{p\_peak\_to\_noise}, while broader tree-based importance rankings still highlight noise-normalized peak strength as the main discriminator. SHAP analysis~\cite{b16} (Fig.~\ref{fig:shap}) confirms these rankings from a model-agnostic perspective.
 
 \begin{figure}[t]
 \centering

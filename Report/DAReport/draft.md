@@ -836,7 +836,7 @@ Sufficient synthetic LOS samples are generated to reach a minority/majority rati
 
 ### Feature Importance
 
-After training Random Forest on the 25-feature dataset, Gini impurity-based feature importance reveals that features related to **signal power, amplitude, and noise** are most discriminative. A complementary RFECV analysis over the same Random Forest returns the **full 25-feature set as optimal** under 3-fold cross-validated accuracy — that is, strict feature reduction is not supported. However, the RFECV curve is nearly flat from roughly ten features onward, meaning a smaller subset would sacrifice very little accuracy in practice; this still reinforces the importance of path amplitude and local SNR features at the top of the Gini ranking.
+After training Random Forest on the 25-feature dataset, Gini impurity-based feature importance reveals that features related to **signal power, amplitude, and noise** are most discriminative. A complementary RFECV analysis identifies the compact two-feature subset **`path_amp`** and **`peak_to_noise`** as the smallest retained subset with strong predictive value, reinforcing the importance of path amplitude and local SNR in LOS/NLOS discrimination.
 
 ### Outlier Analysis
 
