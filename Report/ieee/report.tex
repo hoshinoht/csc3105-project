@@ -13,7 +13,7 @@
 \usepackage{multirow}
 \usepackage[hidelinks]{hyperref}
 
-\graphicspath{{plots/}}
+\graphicspath{{plots/}{../../plots/}}
 
 \begin{document}
 
@@ -309,7 +309,7 @@ Among directly comparable feature-engineered models, XGBoost is best by AUC (0.9
 
 \subsection{Distance Estimation Results}
 
-Four regressors are trained per path: Ridge Regression (linear baseline), RF, GBT, and XGB. Table~\ref{tab:reg_results} presents their performance. Path~1 uses the original test split, while path~2 uses the 8,193 valid path~2 test samples retained after preprocessing and two-path extraction.
+Four regressors are trained per path: Ridge Regression (linear baseline), RF, GBT, and XGB. Table~\ref{tab:reg_results} presents their performance. Path~1 uses the original test split, while path~2 uses the 8,192 valid path~2 test samples retained after preprocessing and two-path extraction.
 
 \begin{table}[t]
 \caption{Distance Estimation Performance}
