@@ -21,6 +21,10 @@ Libraries: numpy, and all project modules under src/
 
 from src import visualization as viz
 from src.clustering import run_kmeans_analysis, run_elbow_silhouette_analysis, run_dbscan_analysis
+from src.config import (
+    RANDOM_STATE, DL_SEED, SMOTE_TARGET_RATIO, RF_SMOTE_N_ESTIMATORS,
+    CIR_AUG_FACTOR, CIR_NOISE_LEVEL, CIR_MAX_SHIFT, CIR_SCALE_RANGE,
+)
 from src.ensemble import build_ensemble
 from src.synthetic_data import apply_smote, generate_augmented_cir, evaluate_synthetic_impact
 from src.dl_training import train_dl_classifier
@@ -30,6 +34,12 @@ from src.feature_engineering import build_features
 from src.peak_detection import extract_two_paths
 from src.preprocessing import preprocess, scale_and_split, SCALAR_FEATURES
 from src.data_loader import load_dataset
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFECV
+from sklearn.metrics import (
+    accuracy_score, roc_curve, auc as sk_auc, confusion_matrix,
+    accuracy_score as acc_fn, roc_curve as roc_fn, auc as auc_fn,
+)
 import numpy as np
 import warnings
 from sklearn.exceptions import ConvergenceWarning
@@ -107,7 +117,6 @@ def main():
     print("\n" + "=" * 60)
     print("STEP 5a: Recursive Feature Elimination (RFE)")
     print("=" * 60)
-    from sklearn.feature_selection import RFECV
     best_rf = cls_results['Random Forest']['model']
     rfecv = RFECV(
         estimator=best_rf, step=1, cv=3, scoring='accuracy',
@@ -122,6 +131,7 @@ def main():
     ranked = sorted(zip(feature_names, rfecv.ranking_), key=lambda x: x[1])
     for fname, rank in ranked[:10]:
         print(f"    {rank:2d}. {fname}")
+    # Note: RFECV and sklearn.metrics are now imported at module scope (top of file)
 
     # ── Step 5b: Deep Learning on Raw CIR ────────────────────────────
     # Train CNN+Transformer directly on the raw 1016-sample CIR waveforms
@@ -157,14 +167,12 @@ def main():
     # --- SMOTE on ML feature vectors ---
     print("\n>> SMOTE augmentation for ML classifiers")
     X_smote, y_smote, n_smote = apply_smote(
-        X_train_cls, y_train_cls, target_ratio=0.5)
+        X_train_cls, y_train_cls, target_ratio=SMOTE_TARGET_RATIO)
 
     # Re-train the best ML model (Random Forest) with SMOTE-augmented data
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.metrics import accuracy_score, roc_curve, auc as sk_auc, confusion_matrix
     rf_smote = RandomForestClassifier(
-        n_estimators=300, max_depth=None, class_weight='balanced',
-        random_state=42,
+        n_estimators=RF_SMOTE_N_ESTIMATORS, max_depth=None,
+        class_weight='balanced', random_state=RANDOM_STATE,
     )
     rf_smote.fit(X_smote, y_smote)
     y_pred_smote = rf_smote.predict(X_test_cls)
@@ -183,8 +191,9 @@ def main():
     print("\n>> CIR waveform augmentation for CNN+Transformer")
     cir_aug, scalar_aug, label_aug, n_cir_synth = generate_augmented_cir(
         X_cir_train, X_scalar_train, y_dl_train,
-        augmentation_factor=3, noise_level=0.08, max_shift=4,
-        scale_range=(0.80, 1.20), random_state=42,
+        augmentation_factor=CIR_AUG_FACTOR, noise_level=CIR_NOISE_LEVEL,
+        max_shift=CIR_MAX_SHIFT, scale_range=CIR_SCALE_RANGE,
+        random_state=RANDOM_STATE,
     )
 
     dl_result_aug = train_dl_classifier(
@@ -331,18 +340,26 @@ def main():
     viz.plot_annotated_cir(df, path1_idx, path1_amp, path2_idx, path2_amp,
                            cls_results, features_df)
 
-    # ── Fair Comparison: ML vs DL on balanced test set ──────────────
+    # ── Cross-Pipeline Reference Evaluation ─────────────────────────
+    # NOTE: This is NOT a strictly controlled benchmark. ML models receive
+    # the 25-dim hand-crafted feature vector while the DL model receives the
+    # raw 1016-sample CIR plus 11 scalar features. The two are evaluated on
+    # the same underlying samples (the original 50/50 balanced Path-1 test
+    # split), but the input representations differ — so results should be
+    # read as cross-pipeline reference points rather than an apples-to-apples
+    # comparison. This framing matches the discussion in the IEEE report.
     print("\n" + "=" * 60)
-    print("FAIR COMPARISON: ML vs DL on Original Balanced Test Set (Path 1 only)")
+    print("CROSS-PIPELINE REFERENCE EVALUATION (balanced Path-1 test set)")
+    print("  (different input representations — not a controlled benchmark)")
     print("=" * 60)
     # Evaluate ML models on the original balanced test set (path1 only, 50/50 class balance)
     X_test_fair = features_df.iloc[test_idx].values
     y_test_fair = labels_cls[test_idx]
-    print(f"  Fair test set: {len(y_test_fair)} samples "
+    print(f"  Balanced test set: {len(y_test_fair)} samples "
           f"(LOS={int((y_test_fair == 0).sum())}, NLOS={int((y_test_fair == 1).sum())})")
 
-    from sklearn.metrics import accuracy_score as acc_fn, roc_curve as roc_fn, auc as auc_fn
-    # Evaluate individual ML models on fair test set (skip ensembles — handled separately below)
+    # acc_fn/roc_fn/auc_fn are aliased at module scope (top of file)
+    # Evaluate individual ML models on balanced test set (skip ensembles — handled separately below)
     ml_model_names = ['Logistic Regression', 'Random Forest', 'Gradient Boosted Trees',
                       'XGBoost']
     for name in ml_model_names:
@@ -357,22 +374,28 @@ def main():
         print(f"  {name:30s}: Accuracy={acc_fair:.4f}, AUC={auc_fair:.4f}")
 
     # DL model on its own balanced test set (already evaluated)
-    if 'CNN+Transformer' in cls_results:
-        dl_res = cls_results['CNN+Transformer']
+    # dl_res is initialised here so downstream fusion can reference it safely
+    # even if the CNN+Transformer block failed earlier (we skip fusion in that case).
+    dl_res = cls_results.get('CNN+Transformer')
+    if dl_res is not None:
         print(
             f"  {'CNN+Transformer':30s}: Accuracy={dl_res['accuracy']:.4f}, AUC={dl_res['auc']:.4f}")
 
     # ── DL+ML Ensemble Fusion ─────────────────────────────────────
-    # Average best ML ensemble probabilities with DL probabilities on balanced test set
+    # Average best ML ensemble probabilities with DL probabilities on balanced test set.
+    # NOTE: the DL probabilities used here come from the ORIGINAL (non-augmented)
+    # CNN+Transformer run. The augmented DL model is not re-evaluated on the
+    # fair test set because its training set was synthetically expanded and
+    # its stored y_prob is on the same balanced test set anyway.
     best_ml_names = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']
                      if n in cls_results and 'model' in cls_results[n]]
-    if 'CNN+Transformer' in cls_results and len(best_ml_names) >= 2:
+    if dl_res is not None and len(best_ml_names) >= 2:
         ml_fair_probs = np.column_stack([
             cls_results[n]['model'].predict_proba(X_test_fair)[:, 1]
             for n in best_ml_names
         ])
         ml_ens_prob = ml_fair_probs.mean(axis=1)
-        # DL already evaluated on balanced test set
+        # DL already evaluated on balanced test set (original, non-augmented model)
         dl_prob_fair = dl_res['y_prob']
         combined_prob = 0.5 * ml_ens_prob + 0.5 * dl_prob_fair
         combined_pred = (combined_prob >= 0.5).astype(int)
@@ -380,7 +403,7 @@ def main():
         fpr_c, tpr_c, _ = roc_fn(y_test_fair, combined_prob)
         auc_combined = auc_fn(fpr_c, tpr_c)
         print(
-            f"  {'DL+ML Ensemble Fusion':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
+            f"  {'DL+ML Fusion (non-aug DL)':30s}: Accuracy={acc_combined:.4f}, AUC={auc_combined:.4f}")
 
     # Ensemble models: re-evaluate on fair test set
     base_names_fair = [n for n in ['Random Forest', 'Gradient Boosted Trees', 'XGBoost']

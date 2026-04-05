@@ -276,7 +276,7 @@ K-Means with k=2 is applied to the expanded two-path 25-feature dataset used by 
 - **Silhouette score**: Measures cluster compactness and separation (range [-1, 1])
 - **Adjusted Rand Index (ARI)**: Label-permutation-invariant measure of cluster-label agreement
 
-Under this evaluated expanded-set configuration, clustering remains **weak**: K-Means achieves **0.5906 test accuracy** with **ARI = 0.0269**, indicating only very limited recovery of the supervised LOS/NLOS structure. PCA is used to project the 25-dimensional feature space to 2D for visualization (`plots/14_clustering.png`), but the resulting plot should be read as evidence of substantial overlap rather than strong unsupervised separation.
+Under this evaluated expanded-set configuration, clustering remains **weak**: K-Means achieves **0.5700 test accuracy** with **ARI = -0.0099** (essentially random agreement — slightly *worse* than chance alignment after optimal mapping), indicating only very limited recovery of the supervised LOS/NLOS structure. PCA is used to project the 25-dimensional feature space to 2D for visualization (`plots/14_clustering.png`), but the resulting plot should be read as evidence of substantial overlap rather than strong unsupervised separation.
 
 #### DBSCAN
 
@@ -284,7 +284,7 @@ Density-Based Spatial Clustering of Applications with Noise (DBSCAN) is applied 
 
 Features are standardized internally with `StandardScaler` before clustering, since DBSCAN relies on Euclidean distance for neighborhood queries. The algorithm is configured with `eps=2.0` (maximum neighborhood radius) and `min_samples=10` (minimum points to form a dense core region). Accuracy is evaluated on non-noise samples only, using the optimal cluster-to-label mapping (same approach as K-Means). PCA is used to project the feature space to 2D for visualization alongside the K-Means results.
 
-In the evaluated configuration, DBSCAN does not recover a usable partition and effectively returns **0 clusters** after noise assignment, which is consistent with the weak unsupervised separation narrative.
+In the evaluated configuration, DBSCAN fragments the scaled feature space into **9 small density clusters** that do not align with the LOS/NLOS labels, rejecting roughly **12.7% of points as noise** and reaching only **0.5263 accuracy** on the clustered points. This is consistent with the weak unsupervised separation narrative: density connectivity in this 25-dimensional engineered feature space recovers local neighborhood structure but not the supervised LOS/NLOS boundary.
 
 ### Ensemble Methods
 
@@ -836,7 +836,7 @@ Sufficient synthetic LOS samples are generated to reach a minority/majority rati
 
 ### Feature Importance
 
-After training Random Forest on the 25-feature dataset, Gini impurity-based feature importance reveals that features related to **signal power, amplitude, and noise** are most discriminative. A complementary RFECV analysis identifies the compact two-feature subset **`path_amp`** and **`peak_to_noise`** as the smallest retained subset with strong predictive value, reinforcing the importance of path amplitude and local SNR in LOS/NLOS discrimination.
+After training Random Forest on the 25-feature dataset, Gini impurity-based feature importance reveals that features related to **signal power, amplitude, and noise** are most discriminative. A complementary RFECV analysis over the same Random Forest returns the **full 25-feature set as optimal** under 3-fold cross-validated accuracy — that is, strict feature reduction is not supported. However, the RFECV curve is nearly flat from roughly ten features onward, meaning a smaller subset would sacrifice very little accuracy in practice; this still reinforces the importance of path amplitude and local SNR features at the top of the Gini ranking.
 
 ### Outlier Analysis
 
@@ -862,8 +862,8 @@ Only **4 degenerate samples** (with `RANGE = 0` or `CIR_PWR = 0`) were removed a
 
 Logistic Regression provides the linear baseline. It models the log-odds of NLOS classification as a linear combination of the 25 input features. On the expanded two-path test set:
 
-- **Accuracy**: 0.9199
-- **AUC**: 0.9694
+- **Accuracy**: 0.9185
+- **AUC**: 0.9730
 
 The lower AUC compared to tree-based methods suggests that the LOS/NLOS decision boundary in 25-dimensional feature space is **non-linear**, and a linear classifier cannot capture all the discriminative structure in the data.
 
@@ -871,8 +871,8 @@ The lower AUC compared to tree-based methods suggests that the LOS/NLOS decision
 
 After GridSearchCV, the best Random Forest configuration achieves on the expanded two-path test set:
 
-- **Accuracy**: 0.9386
-- **AUC**: 0.9815
+- **Accuracy**: 0.9396
+- **AUC**: 0.9821
 
 The accuracy improvement over Logistic Regression suggests the importance of non-linear decision boundaries. The ensemble of trees naturally handles feature interactions (e.g., the joint combination of `energy_ratio` and `peak_to_noise`) that linear models cannot capture. Feature importances extracted from the trained forest provide interpretable insight into which features matter most.
 
@@ -880,8 +880,8 @@ The accuracy improvement over Logistic Regression suggests the importance of non
 
 The HistGradientBoostingClassifier delivers similarly strong performance:
 
-- **Accuracy**: 0.9311
-- **AUC**: 0.9819
+- **Accuracy**: 0.9312
+- **AUC**: 0.9821
 
 Gradient boosting builds trees sequentially, with each tree correcting the residual errors of the previous ensemble. The histogram-based implementation is computationally efficient for larger tabular datasets and, in this study, achieves competitive performance among the tree-based baselines.
 
@@ -889,8 +889,8 @@ Gradient boosting builds trees sequentially, with each tree correcting the resid
 
 XGBoost achieves the strongest single-model inline classification result after GridSearchCV tuning:
 
-- **Accuracy**: 0.9404
-- **AUC**: 0.9834
+- **Accuracy**: 0.9398
+- **AUC**: 0.9832
 
 XGBoost's built-in regularization (L1 and L2 penalties on tree weights) provides additional robustness against overfitting.
 
@@ -898,22 +898,22 @@ XGBoost's built-in regularization (L1 and L2 penalties on tree weights) provides
 
 The hybrid CNN+Transformer model is trained on the original-sample raw-CIR pipeline rather than the expanded two-path set, since the raw CIR is identical for both paths of a given sample. Because results are pre-computed from this separate pipeline, they should be compared qualitatively with the tabular benchmarks:
 
-- **Accuracy**: 0.9360
-- **AUC**: 0.9821
+- **Accuracy**: 0.9368
+- **AUC**: 0.9827
 
-With raw-CIR augmentation in that separate pipeline, the CNN+Transformer reaches **0.9421 accuracy** and **0.9845 AUC**. However, because this result comes from a different training workflow, it should not be interpreted as direct superiority over the tabular ML models.
+With raw-CIR augmentation in that separate pipeline, the CNN+Transformer reaches **0.9387 accuracy** and **0.9862 AUC**. Augmentation trades a small amount of raw accuracy for a clear AUC improvement; because this result comes from a different training workflow, it should not be interpreted as direct superiority over the tabular ML models.
 
 #### Ensemble Methods
 
-**Ensemble (Average)**: Averaging RF, GBT, and XGBoost probability predictions reduces model-specific variance. On the expanded two-path test set, the ensemble reaches **0.9402 accuracy** and **0.9831 AUC**.
+**Ensemble (Average)**: Averaging RF, GBT, and XGBoost probability predictions reduces model-specific variance. On the expanded two-path test set, the ensemble reaches **0.9399 accuracy** and **0.9832 AUC**.
 
-**Ensemble (Stacked)**: The logistic regression meta-learner trained on cross-validated base-model predictions slightly improves accuracy to **0.9415** with **0.9830 AUC**, indicating that most of the gain comes from combining strong tree-based learners rather than from a dramatic change in ranking quality.
+**Ensemble (Stacked)**: The logistic regression meta-learner trained on cross-validated base-model predictions slightly improves accuracy to **0.9413** with **0.9829 AUC**, indicating that most of the gain comes from combining strong tree-based learners rather than from a dramatic change in ranking quality.
 
 ### Unsupervised K-Means Clustering
 
 K-Means (k=2) is applied to the expanded two-path 25-feature dataset used by the tabular classifiers. In the evaluated implementation, this clustering step does not apply an additional StandardScaler internally; results therefore reflect the raw engineered feature magnitudes and the inherent 25/75 class imbalance of the expanded labeling setup.
 
-With optimal cluster-to-label mapping, K-Means reaches only **0.5906 test accuracy** and **0.0269 ARI**. These values indicate weak unsupervised label recovery rather than meaningful unsupervised recovery of the LOS/NLOS boundary. PCA visualization of the 25-dimensional feature space projected to 2D in `plots/14_clustering.png` should therefore be interpreted cautiously: overlap between classes remains substantial.
+With optimal cluster-to-label mapping, K-Means reaches only **0.5700 test accuracy** and **-0.0099 ARI** (essentially random agreement). These values indicate weak unsupervised label recovery rather than meaningful unsupervised recovery of the LOS/NLOS boundary. PCA visualization of the 25-dimensional feature space projected to 2D in `plots/14_clustering.png` should therefore be interpreted cautiously: overlap between classes remains substantial.
 
 ### Distance Estimation (Regression)
 
@@ -923,8 +923,8 @@ Path 1 regression uses the 25 per-path features with the original RANGE as targe
 
 - **Ridge Regression**: RMSE = 1.6164 m, R² = 0.5407
 - **Random Forest Regressor**: RMSE = 1.3706 m, R² = 0.6698
-- **Gradient Boosted Regressor**: RMSE = 1.3872 m, R² = 0.6617
-- **XGBoost Regressor**: RMSE = 1.3726 m, R² = 0.6688
+- **Gradient Boosted Regressor**: RMSE = 1.3877 m, R² = 0.6615
+- **XGBoost Regressor**: RMSE = 1.3715 m, R² = 0.6693
 
 Path 1 regression is challenging because the target RANGE value includes NLOS bias for NLOS samples [3], [4]: the measured range is systematically larger than the true distance, and the magnitude of the bias varies by environment.
 
@@ -933,9 +933,9 @@ Path 1 regression is challenging because the target RANGE value includes NLOS bi
 Path 2 regression uses the 25 per-path features plus the original RANGE measurement as an additional feature:
 
 - **Ridge Regression**: RMSE = 0.0000 m, R² = 1.0000 *(see note below)*
-- **Random Forest Regressor**: RMSE = 0.4696 m, R² = 0.9997
-- **Gradient Boosted Regressor**: RMSE = 0.2889 m, R² = 0.9999
-- **XGBoost Regressor**: RMSE = 1.2176 m, R² = 0.9981
+- **Random Forest Regressor**: RMSE = 0.4658 m, R² = 0.9997
+- **Gradient Boosted Regressor**: RMSE = 0.2900 m, R² = 0.9999
+- **XGBoost Regressor**: RMSE = 1.2238 m, R² = 0.9980
 
 Path 2 achieves dramatically better regression performance because its target is **analytically constrained** by how it is constructed from RANGE and path timing. The perfect Ridge result should therefore not be interpreted as evidence that Path 2 is an intrinsically easy real-world regression task; rather, it reflects that the target is an exact linear combination of features supplied as inputs.
 
@@ -1027,13 +1027,13 @@ Key observations:
 
 Receiver Operating Characteristic (ROC) curves plot the True Positive Rate (sensitivity) against the False Positive Rate (1 - specificity) at all possible classification thresholds. The Area Under the Curve (AUC) summarizes overall classifier quality:
 
-- **Logistic Regression**: AUC = 0.9694
-- **SVM (RBF)**: AUC = 0.8734
-- **Random Forest**: AUC = 0.9815
-- **Gradient Boosted Trees**: AUC = 0.9819
-- **XGBoost**: AUC = 0.9834
-- **Ensemble (Average)**: AUC = 0.9831
-- **Ensemble (Stacked)**: AUC = 0.9830
+- **Logistic Regression**: AUC = 0.9730
+- **SVM (RBF)**: AUC = 0.9735
+- **Random Forest**: AUC = 0.9821
+- **Gradient Boosted Trees**: AUC = 0.9821
+- **XGBoost**: AUC = 0.9832
+- **Ensemble (Average)**: AUC = 0.9832
+- **Ensemble (Stacked)**: AUC = 0.9829
 
 The ROC curves plot the inline tabular classifiers and ensembles only. The separate raw-CIR CNN+Transformer result is competitive with the strongest inline tabular models, but it is reported from a different pipeline on the original split and is therefore summarized in Table 1 rather than overlaid here.
 
@@ -1091,7 +1091,7 @@ Key observation: the attention maps often show elevated attention near the first
 
 ![PCA Scatter of K-Means Clusters and True Labels on Expanded Two-Path Features](../../plots/14_clustering.png)
 
-This side-by-side PCA scatter plot compares the **K-Means cluster assignments** and the **true LOS/NLOS labels** for the expanded two-path feature set used in the clustering experiment. The visualization shows substantial overlap between the learned groups and the true classes. This is consistent with the quantitative clustering results (accuracy 0.5906, ARI 0.0269): the engineered features are useful for supervised learning, but they do **not** yield strong unsupervised recovery of LOS/NLOS structure under the tested clustering settings.
+This side-by-side PCA scatter plot compares the **K-Means cluster assignments** and the **true LOS/NLOS labels** for the expanded two-path feature set used in the clustering experiment. The visualization shows substantial overlap between the learned groups and the true classes. This is consistent with the quantitative clustering results (accuracy 0.5700, ARI -0.0099): the engineered features are useful for supervised learning, but they do **not** yield strong unsupervised recovery of LOS/NLOS structure under the tested clustering settings.
 
 ### Supplementary Diagnostics (Plots 15-24)
 
@@ -1149,7 +1149,7 @@ RFECV indicates that a compact subset can still retain strong performance, suppo
 
 ![DBSCAN Clustering versus True Labels](../../plots/23_dbscan.png)
 
-DBSCAN does not recover a usable partition in the evaluated configuration, which is consistent with the weak unsupervised separation narrative.
+DBSCAN fragments the feature space into 9 small density clusters that do not align with the LOS/NLOS labels (~12.7% noise, 0.5263 accuracy on clustered points), consistent with the weak unsupervised separation narrative.
 
 #### Plot 24: Synthetic Data Augmentation Impact
 
@@ -1171,25 +1171,25 @@ The AUC is the primary comparison metric because it is threshold-independent and
 
 | Model                          | Accuracy | AUC    | Test Set                        |
 | ------------------------------ | -------- | ------ | ------------------------------- |
-| Logistic Regression            | 0.9199   | 0.9694 | Expanded 2-path set             |
-| SVM (RBF)                      | 0.6523   | 0.8734 | Expanded 2-path set             |
-| Random Forest                  | 0.9386   | 0.9815 | Expanded 2-path set             |
-| Gradient Boosted Trees         | 0.9311   | 0.9819 | Expanded 2-path set             |
-| XGBoost                        | 0.9404   | 0.9834 | Expanded 2-path set             |
-| Ensemble (Average)             | 0.9402   | 0.9831 | Expanded 2-path set             |
-| Ensemble (Stacked)             | 0.9415   | 0.9830 | Expanded 2-path set             |
-| CNN+Transformer                | 0.9360   | 0.9821 | Original-split raw-CIR pipeline |
-| CNN+Transformer + Augmentation | 0.9421   | 0.9845 | Original-split raw-CIR pipeline |
+| Logistic Regression            | 0.9185   | 0.9730 | Expanded 2-path set             |
+| SVM (RBF)                      | 0.9262   | 0.9735 | Expanded 2-path set             |
+| Random Forest                  | 0.9396   | 0.9821 | Expanded 2-path set             |
+| Gradient Boosted Trees         | 0.9312   | 0.9821 | Expanded 2-path set             |
+| XGBoost                        | 0.9398   | 0.9832 | Expanded 2-path set             |
+| Ensemble (Average)             | 0.9399   | 0.9832 | Expanded 2-path set             |
+| Ensemble (Stacked)             | 0.9413   | 0.9829 | Expanded 2-path set             |
+| CNN+Transformer                | 0.9368   | 0.9827 | Original-split raw-CIR pipeline |
+| CNN+Transformer + Augmentation | 0.9387   | 0.9862 | Original-split raw-CIR pipeline |
 
 #### Key Finding: Strong ML Baseline, Competitive DL Result
 
-Within the inline notebook benchmark, tree-based tabular models remain very strong: XGBoost achieves the best single-model AUC (0.9834), and the stacked ensemble achieves the best inline accuracy (0.9415).
+Within the inline notebook benchmark, tree-based tabular models remain very strong: XGBoost achieves the best single-model AUC (0.9832), and the stacked ensemble achieves the best inline accuracy (0.9413).
 
 The separate raw-CIR CNN+Transformer result is competitive, and its augmented version slightly exceeds the best inline AUC numerically. Because the deep-learning figures are pre-computed from a different workflow, this is interpreted as **cross-pipeline competitiveness**, not definitive parity or superiority in a single controlled benchmark.
 
 #### Logistic Regression Suggests Non-Linearity
 
-The lower Logistic Regression AUC (0.9694 vs. 0.9834 for the best inline XGBoost model) suggests that the LOS/NLOS decision boundary in 25-dimensional feature space is genuinely non-linear. This gap justifies the use of stronger non-linear learners.
+The lower Logistic Regression AUC (0.9730 vs. 0.9832 for the best inline XGBoost model) suggests that the LOS/NLOS decision boundary in 25-dimensional feature space is genuinely non-linear. This gap justifies the use of stronger non-linear learners.
 
 #### Fair-Comparison Context
 
@@ -1197,9 +1197,9 @@ A rigorous architecture comparison would require all model families to be traine
 
 #### Synthetic Data Impact
 
-**SMOTE + Random Forest**: The effect is negligible. The notebook reports **RF + SMOTE = 0.9389 / 0.9813** versus **RF original = 0.9386 / 0.9815**, so oversampling does not materially improve the already large tabular training set.
+**SMOTE + Random Forest**: The effect is negligible. The notebook reports **RF + SMOTE = 0.9395 / 0.9816** versus **RF original = 0.9396 / 0.9821**, so oversampling does not materially improve the already large tabular training set.
 
-**CIR Augmentation + CNN+Transformer**: In the separate pre-computed raw-CIR pipeline, augmentation improves the CNN+Transformer from **0.9360 / 0.9821** to **0.9421 / 0.9845**. This is a more noticeable gain than the SMOTE result, but it should still be discussed as a cross-pipeline augmentation study rather than as an inline notebook retraining experiment.
+**CIR Augmentation + CNN+Transformer**: In the separate pre-computed raw-CIR pipeline, augmentation shifts the CNN+Transformer from **0.9368 / 0.9827** to **0.9387 / 0.9862**. Accuracy moves only marginally (+0.0019) while AUC improves more meaningfully (+0.0035), indicating that augmentation primarily sharpens the model's ranking/calibration rather than its top-1 decisions. This is still a more noticeable gain than the SMOTE result, but it should be discussed as a cross-pipeline augmentation study rather than as an inline notebook retraining experiment.
 
 Conclusion: augmentation effects are representation-dependent in this project. SMOTE is largely redundant for the tabular pipeline, whereas waveform-level augmentation appears more helpful for the separate raw-CIR deep model.
 
@@ -1208,9 +1208,9 @@ Conclusion: augmentation effects are representation-dependent in this project. S
 | Model                   | Path 1 RMSE | Path 1 R² | Path 2 RMSE | Path 2 R² |
 | ----------------------- | ----------- | --------- | ----------- | --------- |
 | Ridge Regression        | 1.6164 m    | 0.5407    | 0.0000 m\*  | 1.0000\*  |
-| Random Forest Regressor | 1.3706 m    | 0.6698    | 0.4696 m    | 0.9997    |
-| GBT Regressor           | 1.3872 m    | 0.6617    | 0.2889 m    | 0.9999    |
-| XGBoost Regressor       | 1.3726 m    | 0.6688    | 1.2176 m    | 0.9981    |
+| Random Forest Regressor | 1.3706 m    | 0.6698    | 0.4658 m    | 0.9997    |
+| GBT Regressor           | 1.3877 m    | 0.6615    | 0.2900 m    | 0.9999    |
+| XGBoost Regressor       | 1.3715 m    | 0.6693    | 1.2238 m    | 0.9980    |
 
 \* Path 2 Ridge achieves perfect scores because the target is a near-deterministic linear function of supplied input features; this is a consistency check, not a learning result.
 
